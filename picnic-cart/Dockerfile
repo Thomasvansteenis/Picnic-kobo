@@ -1,11 +1,11 @@
-ARG BUILD_FROM
-FROM ${BUILD_FROM}
+FROM alpine:3.18
 
 # Install requirements
 RUN apk add --no-cache \
     python3 \
     py3-pip \
-    jq
+    jq \
+    bash
 
 # Upgrade pip
 RUN pip3 install --no-cache-dir --upgrade pip
