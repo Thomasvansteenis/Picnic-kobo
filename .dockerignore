@@ -1,0 +1,38 @@
+# Git files
+.git
+.gitignore
+
+# Documentation
+README.md
+HOMEASSISTANT_SETUP.md
+QUICK_START.md
+ADDON_INSTALL.md
+DOCS.md
+LICENSE
+
+# Docker files
+docker-compose.yml
+Dockerfile
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Environment
+.env
+.env.example
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log

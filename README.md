@@ -13,32 +13,39 @@ A simple, e-ink optimized web application for managing your Picnic grocery shopp
 
 ## Prerequisites
 
-- Python 3.11 or higher (for standalone deployment)
-- Docker and Docker Compose (for containerized deployment)
+- Home Assistant (for add-on installation)
+- OR Python 3.11+ / Docker (for standalone deployment)
 - A Picnic account (Netherlands, Germany, or Belgium)
 
 ## Installation
 
-### Option 1: Docker Deployment (Recommended for Home Assistant)
+### Option 1: Home Assistant Add-on (Recommended ⭐)
 
-1. Clone this repository:
+The easiest way to install is as a Home Assistant add-on:
+
+1. Open Home Assistant → **Settings** → **Add-ons**
+2. Enable **Advanced Mode** in your user profile if not already enabled
+3. Install **Terminal & SSH** add-on (if not installed)
+4. Open Terminal and run:
    ```bash
-   git clone <repository-url>
-   cd Picnic-kobo
+   cd /addons
+   mkdir -p picnic-cart
+   cd picnic-cart
    ```
-
-2. Create a `.env` file (optional, you can also login via web interface):
+5. Copy all files from this repository to `/addons/picnic-cart/`
+6. Make the run script executable:
    ```bash
-   cp .env.example .env
-   # Edit .env with your preferred text editor
+   chmod +x run.sh
    ```
+7. Go back to **Settings** → **Add-ons**
+8. Click **⋮** (three dots) → **Reload**
+9. Find **"Picnic Shopping Cart"** in the local add-ons
+10. Click **Install**
+11. Configure the `flask_secret_key` in the Configuration tab
+12. Click **Start**
+13. Click **Open Web UI** to access the app
 
-3. Build and run with Docker Compose:
-   ```bash
-   docker-compose up -d
-   ```
-
-4. Access the application at `http://localhost:5000` or `http://your-server-ip:5000`
+**📖 See [ADDON_INSTALL.md](ADDON_INSTALL.md) for detailed step-by-step instructions.**
 
 ### Option 2: Standalone Python Deployment
 
@@ -112,20 +119,9 @@ This application only manages your cart. To complete your order:
 2. Your cart will be synchronized
 3. Select delivery slot and complete checkout
 
-## Home Assistant Integration
+## Adding to Home Assistant Dashboard (Optional)
 
-### Running on Home Assistant OS
-
-1. Install the "SSH & Web Terminal" add-on from the Add-on Store
-2. SSH into your Home Assistant instance
-3. Navigate to your config directory or create a custom apps folder
-4. Clone this repository
-5. Run with Docker Compose as shown above
-6. Access via `http://homeassistant.local:5000`
-
-### Adding to Home Assistant Dashboard
-
-You can add this as an iframe panel in your Home Assistant:
+If you installed as a Home Assistant add-on, you can add it to your sidebar:
 
 ```yaml
 # configuration.yaml
@@ -136,6 +132,8 @@ panel_iframe:
     icon: mdi:cart
     require_admin: false
 ```
+
+Then restart Home Assistant to see it in the sidebar.
 
 ## Security Notes
 
