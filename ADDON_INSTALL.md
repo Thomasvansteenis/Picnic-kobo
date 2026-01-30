@@ -2,15 +2,93 @@
 
 This guide shows you how to install the Picnic Shopping Cart as a Home Assistant add-on.
 
-## Method 1: Local Add-on Installation (Recommended for Testing)
+## Method 1: Custom Repository Installation (Recommended ⭐)
 
-This is the easiest method if you want to test the add-on or don't want to set up a public repository.
+This is the easiest method - install directly from the GitHub repository with automatic updates.
+
+### Step 1: Add the Repository
+
+#### Option A: One-Click Add (Easiest)
+
+Click this button to add the repository automatically:
+
+[![Add Repository](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FThomasvansteenis%2FPicnic-kobo)
+
+Then skip to Step 2.
+
+#### Option B: Manual Add
+
+1. Open Home Assistant web interface (`http://homeassistant.local:8123`)
+2. Navigate to **Settings** → **Add-ons**
+3. Click the **Add-on Store** button
+4. Click the **⋮** (three dots) menu in the top right corner
+5. Select **Repositories**
+6. Paste this URL: `https://github.com/Thomasvansteenis/Picnic-kobo`
+7. Click **Add**
+8. Close the repositories dialog
+
+### Step 2: Install the Add-on
+
+1. The add-on store will reload automatically
+2. Scroll down to find **"Picnic Shopping Cart"**
+3. Click on it
+4. Click **Install**
+5. Wait for the installation to complete (may take a few minutes as it builds the container)
+
+### Step 3: Configure the Add-on
+
+1. Once installed, go to the **Configuration** tab
+2. Change the `flask_secret_key` to a secure random value:
+
+   **Generate a secure key:**
+   - Open **Terminal & SSH** add-on (install it first if needed)
+   - Run this command:
+     ```bash
+     python3 -c "import secrets; print(secrets.token_hex(32))"
+     ```
+   - Copy the output
+
+3. Paste the key into the configuration:
+   ```yaml
+   flask_secret_key: "paste-your-generated-key-here"
+   ```
+
+4. Click **Save**
+
+### Step 4: Start the Add-on
+
+1. Go to the **Info** tab
+2. Enable **Start on boot** (recommended)
+3. Enable **Watchdog** (recommended)
+4. Click **Start**
+5. Wait for it to start (check the **Log** tab if there are issues)
+
+### Step 5: Access the Web Interface
+
+1. Click the **Open Web UI** button, OR
+2. Navigate to `http://homeassistant.local:5000`, OR
+3. Use your Home Assistant IP: `http://YOUR_HA_IP:5000`
+
+### Step 6: Login and Use
+
+1. Enter your Picnic credentials:
+   - **Email**: Your Picnic account email
+   - **Password**: Your Picnic password
+   - **Country**: NL, DE, or BE
+
+2. Start shopping!
+
+---
+
+## Method 2: Local Add-on Installation (For Development/Testing)
+
+Use this method only if you want to modify the add-on or can't use the repository method.
 
 ### Step 1: Access Your Home Assistant
 
-1. Open Home Assistant web interface (`http://homeassistant.local:8123`)
+1. Open Home Assistant web interface
 2. Go to **Settings** → **Add-ons**
-3. Install **"SSH & Web Terminal"** or **"Terminal & SSH"** if you haven't already
+3. Install **"Terminal & SSH"** if you haven't already
 4. Open the Terminal
 
 ### Step 2: Create Local Add-on Directory
@@ -29,8 +107,6 @@ cd picnic-cart
 
 ### Step 3: Copy the Add-on Files
 
-You have several options:
-
 **Option A: Clone from Git (if available)**
 
 ```bash
@@ -38,199 +114,148 @@ You have several options:
 apk add git
 
 # Clone the repository
-git clone https://github.com/Thomasvansteenis/Picnic-kobo.git .
-git checkout claude/kobo-grocery-cart-app-bsunW
+git clone https://github.com/Thomasvansteenis/Picnic-kobo.git temp
+cd temp
+
+# Copy only the add-on directory
+cp -r picnic-cart/* /addons/picnic-cart/
+cd /addons
+rm -rf picnic-cart/temp
 ```
 
-**Option B: Manual File Creation**
+**Option B: Download and Extract**
 
-Create each file manually in the `/addons/picnic-cart` directory:
+1. Download the repository as a ZIP from GitHub
+2. Extract it on your computer
+3. Use the File Editor add-on or SCP to copy the contents of the `picnic-cart/` directory to `/addons/picnic-cart/`
 
-1. `config.json` - Add-on configuration
-2. `Dockerfile` - Container build instructions
-3. `build.json` - Build configuration
-4. `run.sh` - Startup script
-5. `app.py` - Main application
-6. `requirements.txt` - Python dependencies
-7. `templates/` - Template files (base.html, login.html, cart.html, search.html)
+**Option C: Manual File Creation**
 
-**Option C: Copy from Another Location**
+Create each file manually in the `/addons/picnic-cart` directory. See the repository for file contents.
 
-If you already have the files on your Home Assistant system:
+### Step 4: Set Permissions
 
 ```bash
-# Copy all files to the add-on directory
-cp -r /path/to/Picnic-kobo/* /addons/picnic-cart/
-```
-
-### Step 4: Set Proper Permissions
-
-```bash
-# Make the run script executable
 chmod +x /addons/picnic-cart/run.sh
 ```
 
 ### Step 5: Reload Add-ons
 
-1. In Home Assistant web interface, go to **Settings** → **Add-ons**
+1. In Home Assistant, go to **Settings** → **Add-ons**
 2. Click the **⋮** (three dots) in the top right
 3. Click **Reload** or **Check for updates**
 4. Wait a few seconds
 
-### Step 6: Install the Add-on
+### Step 6: Install and Configure
 
-1. You should now see **"Picnic Shopping Cart"** in the list of local add-ons
-2. Click on it
-3. Click **Install**
-4. Wait for installation to complete (it will build the Docker image)
-
-### Step 7: Configure the Add-on
-
-1. Go to the **Configuration** tab
-2. Change the `flask_secret_key` to a random string:
-   ```yaml
-   flask_secret_key: "your-random-secret-key-here-at-least-32-characters"
-   ```
-
-   To generate a secure key, in the Terminal:
-   ```bash
-   python3 -c "import secrets; print(secrets.token_hex(32))"
-   ```
-
-3. Click **Save**
-
-### Step 8: Start the Add-on
-
-1. Go to the **Info** tab
-2. Enable **Start on boot** (recommended)
-3. Enable **Watchdog** (recommended)
-4. Click **Start**
-
-### Step 9: Access the Web Interface
-
-1. Click **Open Web UI** in the add-on, OR
-2. Navigate to `http://homeassistant.local:5000`, OR
-3. Use your Home Assistant IP: `http://YOUR_HA_IP:5000`
+Follow Steps 2-6 from Method 1 above.
 
 ---
 
-## Method 2: Custom Repository (For Advanced Users)
+## Using from Kobo E-reader
 
-If you want to share the add-on or have it update automatically:
-
-### Step 1: Create a GitHub Repository
-
-1. Push your add-on to a GitHub repository
-2. The repository should contain all the add-on files
-
-### Step 2: Add Repository to Home Assistant
-
-1. Go to **Settings** → **Add-ons**
-2. Click **Add-on Store**
-3. Click the **⋮** (three dots) in the top right
-4. Click **Repositories**
-5. Add your repository URL: `https://github.com/YOUR_USERNAME/YOUR_REPO`
-6. Click **Add**
-
-### Step 3: Install from Repository
-
-1. The add-on should now appear in the add-on store
-2. Click on it and follow the installation steps from Method 1, Step 6 onwards
-
----
-
-## Verifying Installation
-
-### Check Add-on Status
-
-1. Go to **Settings** → **Add-ons** → **Picnic Shopping Cart**
-2. The status should show "Started" with a green indicator
-3. Check the **Log** tab for any errors
-
-### Test the Web Interface
-
-1. Open `http://homeassistant.local:5000` in your browser
-2. You should see the Picnic login page
-3. Try logging in with your Picnic credentials
-
-### Access from Kobo
-
-1. Connect your Kobo to the same WiFi network
-2. Open the web browser
+1. Connect your Kobo to the same WiFi network as Home Assistant
+2. Open the built-in web browser on your Kobo
 3. Navigate to `http://YOUR_HA_IP:5000`
-4. You should see the login page
+   - Replace `YOUR_HA_IP` with your Home Assistant's IP address
+   - Find your IP in Home Assistant: **Settings** → **System** → **Network**
+4. Login with your Picnic credentials
+5. Search for products and add to cart
+6. Complete your order using the official Picnic app
+
+The interface is optimized for e-ink displays with:
+- High contrast black and white design
+- Large touch-friendly buttons
+- No animations
+- Simple, clean layout
 
 ---
 
-## File Structure
+## Optional: Add to Home Assistant Sidebar
 
-Your add-on directory should look like this:
+To access the cart directly from your Home Assistant sidebar:
 
+1. Edit `/config/configuration.yaml`:
+
+```yaml
+panel_iframe:
+  picnic_cart:
+    title: "Picnic Cart"
+    url: "http://localhost:5000"
+    icon: mdi:cart
+    require_admin: false
 ```
-/addons/picnic-cart/
-├── config.json          # Add-on metadata and configuration
-├── build.json           # Build configuration for different architectures
-├── Dockerfile           # Container build instructions
-├── run.sh               # Entry point script
-├── app.py               # Flask application
-├── requirements.txt     # Python dependencies
-├── templates/
-│   ├── base.html
-│   ├── login.html
-│   ├── cart.html
-│   └── search.html
-├── DOCS.md             # Add-on documentation
-├── README.md           # General documentation
-└── LICENSE
-```
+
+2. Go to **Developer Tools** → **YAML** → **Restart**
+3. The "Picnic Cart" panel will appear in your sidebar
 
 ---
 
 ## Troubleshooting
 
-### Add-on Not Appearing
+### Repository Not Showing Up
 
-- Make sure you ran the **Reload** command in Step 5
-- Check that files are in the correct directory (`/addons/picnic-cart/`)
-- Verify `config.json` exists and is valid JSON
+- Make sure you clicked **Add** after pasting the repository URL
+- Refresh the add-on store page
+- Check that the URL is correct: `https://github.com/Thomasvansteenis/Picnic-kobo`
+
+### Add-on Not Appearing After Reload
+
+- For local installation: Verify files are in `/addons/picnic-cart/`
+- Check that `config.json` exists and is valid JSON
+- Look at Home Assistant logs for errors
 
 ### Build Failed
 
-- Check the **Log** tab for build errors
+- Check the **Log** tab for specific errors
 - Ensure all required files are present
-- Verify `Dockerfile` and `build.json` are correct
+- Try rebuilding: Click **Rebuild** button
 
 ### Add-on Won't Start
 
-- Check the **Log** tab for errors
-- Verify you changed the `flask_secret_key` in configuration
-- Ensure port 5000 is not already in use
-- Check that `run.sh` is executable: `chmod +x /addons/picnic-cart/run.sh`
+- Check you changed the `flask_secret_key` from the default
+- Verify port 5000 is not already in use
+- Check logs for Python errors
+- Ensure `run.sh` is executable (local install only)
 
 ### Cannot Access Web Interface
 
-- Verify the add-on is started
+- Verify the add-on shows "Started" status
 - Check the logs for Flask startup messages
 - Try accessing from the same machine first: `http://localhost:5000`
-- Check firewall settings
+- Verify your firewall isn't blocking port 5000
+
+### Cannot Access from Kobo
+
+1. Test from another device first (phone/computer)
+2. Verify Kobo is on the same WiFi network
+3. Check Home Assistant's IP address hasn't changed
+4. Try accessing Home Assistant main page from Kobo first
 
 ---
 
 ## Updating the Add-on
 
-### Local Installation
-
-1. Update the files in `/addons/picnic-cart/`
-2. Go to the add-on page
-3. Click **Rebuild**
-4. Once rebuilt, click **Restart**
-
 ### Repository Installation
 
-1. Update the version in `config.json`
-2. Push changes to GitHub
-3. In Home Assistant, go to the add-on page
-4. Click **Update** when available
+Updates appear automatically when available:
+1. Go to the add-on page
+2. Click **Update** when the button appears
+3. Wait for rebuild to complete
+4. Click **Restart**
+
+### Local Installation
+
+1. Pull latest changes:
+   ```bash
+   cd /addons/picnic-cart
+   git pull
+   ```
+
+2. Rebuild:
+   - Go to add-on page
+   - Click **Rebuild**
+   - Click **Restart** when complete
 
 ---
 
@@ -238,19 +263,17 @@ Your add-on directory should look like this:
 
 1. Go to **Settings** → **Add-ons** → **Picnic Shopping Cart**
 2. Click **Uninstall**
-3. Optionally, remove the directory:
-   ```bash
-   rm -rf /addons/picnic-cart
-   ```
+3. For repository: Optionally remove repository from the Repositories list
+4. For local: Optionally delete `/addons/picnic-cart/` directory
 
 ---
 
 ## Next Steps
 
-Once installed:
-1. ✅ Login with your Picnic credentials
-2. ✅ Search for groceries
-3. ✅ Add items to your cart
-4. ✅ Complete your order in the official Picnic app
+✅ Add-on installed and running
+✅ Accessible at `http://YOUR_HA_IP:5000`
+✅ Login with Picnic credentials
+✅ Search for groceries from your Kobo
+✅ Complete orders in the official Picnic app
 
-Enjoy easy grocery shopping from your Kobo! 🛒
+Happy shopping! 🛒

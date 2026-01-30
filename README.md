@@ -1,130 +1,91 @@
-# Picnic Kobo Shopping Cart
+# Picnic Shopping Cart - Home Assistant Add-on Repository
 
-A simple, e-ink optimized web application for managing your Picnic grocery shopping cart from your Kobo e-reader or any device. Designed to run on your local Home Assistant server or any other server.
+[![Add Repository](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FThomasvansteenis%2FPicnic-kobo)
 
-## Features
+Home Assistant add-on repository for the Picnic Shopping Cart application.
 
-- **E-ink Optimized UI**: High contrast, simple black and white interface perfect for e-readers
-- **Product Search**: Search for groceries in the Picnic catalog
-- **Cart Management**: Add, remove, and view items in your shopping cart
-- **Session-based Authentication**: Secure login with session management
-- **Lightweight**: Minimal JavaScript, works on devices with limited browser capabilities
-- **Docker Support**: Easy deployment with Docker and Docker Compose
+## About
 
-## Prerequisites
+This repository contains Home Assistant add-ons for managing your Picnic grocery shopping cart from your Kobo e-reader or any web browser.
 
-- Home Assistant (for add-on installation)
-- OR Python 3.11+ / Docker (for standalone deployment)
-- A Picnic account (Netherlands, Germany, or Belgium)
+### Available Add-ons
+
+- **Picnic Shopping Cart** - E-ink optimized web interface for Picnic grocery delivery service
 
 ## Installation
 
-### Option 1: Home Assistant Add-on (Recommended ⭐)
+### Method 1: One-Click Install (Easiest)
 
-The easiest way to install is as a Home Assistant add-on:
+Click this button to add the repository to your Home Assistant:
 
-1. Open Home Assistant → **Settings** → **Add-ons**
-2. Enable **Advanced Mode** in your user profile if not already enabled
-3. Install **Terminal & SSH** add-on (if not installed)
-4. Open Terminal and run:
+[![Add Repository](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FThomasvansteenis%2FPicnic-kobo)
+
+Then:
+1. Click on "Picnic Shopping Cart"
+2. Click "Install"
+3. Configure the add-on
+4. Click "Start"
+
+### Method 2: Manual Repository Addition
+
+1. Open your Home Assistant instance
+2. Navigate to **Settings** → **Add-ons**
+3. Click the **Add-on Store** tab
+4. Click the **⋮** (three dots) in the top right corner
+5. Select **Repositories**
+6. Add this URL: `https://github.com/Thomasvansteenis/Picnic-kobo`
+7. Click **Add**
+8. Refresh the add-on store page
+9. Find **"Picnic Shopping Cart"** in the list
+10. Click on it and then click **Install**
+
+## Configuration
+
+After installation, configure the add-on:
+
+1. Go to the **Configuration** tab
+2. Set your `flask_secret_key` to a random string (minimum 32 characters)
+
+   Generate one with:
    ```bash
-   cd /addons
-   mkdir -p picnic-cart
-   cd picnic-cart
-   ```
-5. Copy all files from this repository to `/addons/picnic-cart/`
-6. Make the run script executable:
-   ```bash
-   chmod +x run.sh
-   ```
-7. Go back to **Settings** → **Add-ons**
-8. Click **⋮** (three dots) → **Reload**
-9. Find **"Picnic Shopping Cart"** in the local add-ons
-10. Click **Install**
-11. Configure the `flask_secret_key` in the Configuration tab
-12. Click **Start**
-13. Click **Open Web UI** to access the app
-
-**📖 See [ADDON_INSTALL.md](ADDON_INSTALL.md) for detailed step-by-step instructions.**
-
-### Option 2: Standalone Python Deployment
-
-1. Clone this repository:
-   ```bash
-   git clone <repository-url>
-   cd Picnic-kobo
-   ```
-
-2. Create a virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   python3 -c "import secrets; print(secrets.token_hex(32))"
    ```
 
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. (Optional) Create a `.env` file:
-   ```bash
-   cp .env.example .env
-   # Edit with your settings
-   ```
-
-5. Run the application:
-   ```bash
-   python app.py
-   ```
-
-6. Access the application at `http://localhost:5000`
+3. Click **Save**
+4. Go to the **Info** tab
+5. Enable **Start on boot** (recommended)
+6. Click **Start**
 
 ## Usage
 
-### On Your Kobo E-reader
+### Accessing the Web Interface
 
-1. Connect your Kobo to WiFi
-2. Open the built-in web browser
-3. Navigate to `http://your-server-ip:5000`
-4. Login with your Picnic credentials
-5. Search for products and add them to your cart
-6. Complete your order using the official Picnic mobile app
+After the add-on starts:
+1. Click **Open Web UI** in the add-on page, OR
+2. Navigate to `http://homeassistant.local:5000`, OR
+3. Use your Home Assistant IP: `http://YOUR_HA_IP:5000`
 
 ### Login
 
+Use your Picnic account credentials:
 - **Email**: Your Picnic account email
 - **Password**: Your Picnic password
-- **Country**: Select NL (Netherlands), DE (Germany), or BE (Belgium)
+- **Country**: NL (Netherlands), DE (Germany), or BE (Belgium)
 
-Note: Credentials are stored only in your session and are not saved permanently.
+### Using from Kobo E-reader
 
-### Searching for Products
+1. Connect your Kobo to the same WiFi network as Home Assistant
+2. Open the Kobo web browser
+3. Navigate to `http://YOUR_HA_IP:5000`
+4. Login and start shopping!
 
-1. Click "Search" in the navigation
-2. Enter product name (e.g., "milk", "bread", "tomatoes")
-3. Browse results and click "Add to Cart" to add items
-4. Adjust quantity before adding if needed
+The interface is optimized for e-ink displays with high contrast and simple design.
 
-### Managing Your Cart
+## Add to Home Assistant Sidebar (Optional)
 
-1. Click "Cart" in the navigation
-2. View all items in your cart
-3. Remove items or adjust quantities
-4. Use "Clear Cart" to empty the entire cart
-
-### Completing Your Order
-
-This application only manages your cart. To complete your order:
-1. Open the official Picnic mobile app or website
-2. Your cart will be synchronized
-3. Select delivery slot and complete checkout
-
-## Adding to Home Assistant Dashboard (Optional)
-
-If you installed as a Home Assistant add-on, you can add it to your sidebar:
+Add this to your `configuration.yaml`:
 
 ```yaml
-# configuration.yaml
 panel_iframe:
   picnic_cart:
     title: "Picnic Cart"
@@ -133,56 +94,32 @@ panel_iframe:
     require_admin: false
 ```
 
-Then restart Home Assistant to see it in the sidebar.
+Then restart Home Assistant.
 
-## Security Notes
+## Support
 
-- This application uses the unofficial Picnic API
-- Credentials are stored in session cookies (not saved to disk)
-- Use HTTPS in production (consider using a reverse proxy like nginx)
-- Change the `FLASK_SECRET_KEY` in production
-- This app is for personal use only
+For issues, questions, or feature requests:
+- [GitHub Issues](https://github.com/Thomasvansteenis/Picnic-kobo/issues)
 
-## Troubleshooting
+## Features
 
-### Login fails
+- 🛒 Search Picnic grocery catalog
+- 📦 Add/remove items from cart
+- 🖥️ E-ink optimized interface
+- 📱 Works on Kobo e-readers
+- 🔒 Secure session-based authentication
+- 🏠 Easy Home Assistant integration
 
-- Verify your Picnic credentials are correct
-- Ensure you selected the right country
-- Check if Picnic service is available in your region
+## Disclaimer
 
-### Cannot access from Kobo
-
-- Verify your server is running: `docker-compose ps` or check if Python process is running
-- Ensure Kobo and server are on the same network
-- Check firewall settings on your server
-- Try accessing from another device first to verify the server is working
-
-### Products not showing in search
-
-- Picnic API may have rate limits
-- Try more specific search terms
-- Verify your Picnic account is active and has access to the catalog
-
-## Development
-
-To modify the application:
-
-1. Edit `app.py` for backend logic
-2. Edit templates in `templates/` for UI changes
-3. The CSS is embedded in `templates/base.html` for simplicity
-4. Restart the application to see changes
+This is an unofficial add-on and is not affiliated with, endorsed by, or connected to Picnic or Home Assistant. Use at your own risk.
 
 ## Credits
 
 - Built with [Flask](https://flask.palletsprojects.com/)
-- Uses [python-picnic-api](https://github.com/MikeBrink/python-picnic-api) by MikeBrink
+- Uses [python-picnic-api](https://github.com/MikeBrink/python-picnic-api)
 - Optimized for Kobo e-readers and e-ink displays
 
 ## License
 
-MIT License - See LICENSE file for details
-
-## Disclaimer
-
-This is an unofficial application and is not affiliated with, endorsed by, or connected to Picnic. Use at your own risk. The developers are not responsible for any issues that may arise from using this application.
+MIT License - See [LICENSE](LICENSE) file for details
