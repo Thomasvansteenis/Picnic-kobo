@@ -1,10 +1,16 @@
-#!/usr/bin/with-contenv bashio
+#!/usr/bin/with-contenv bash
 # ==============================================================================
 # Home Assistant Add-on: Picnic Shopping Cart
 # ==============================================================================
 
-# Read configuration
-FLASK_SECRET_KEY=$(bashio::config 'flask_secret_key')
+# Read configuration directly from options.json
+CONFIG_PATH=/data/options.json
+
+if [ -f "$CONFIG_PATH" ]; then
+    FLASK_SECRET_KEY=$(jq -r '.flask_secret_key // "change-this-to-a-random-secret-key-minimum-32-characters-long"' "$CONFIG_PATH")
+else
+    FLASK_SECRET_KEY="change-this-to-a-random-secret-key-minimum-32-characters-long"
+fi
 
 # Log startup
 echo "[INFO] Starting Picnic Shopping Cart add-on..."
