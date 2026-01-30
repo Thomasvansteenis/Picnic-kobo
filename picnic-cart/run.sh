@@ -1,6 +1,4 @@
-#!/usr/bin/with-contenv bashio
-# shellcheck shell=bash
-set -e
+#!/usr/bin/env bashio
 
 bashio::log.info "Starting Picnic Shopping Cart add-on..."
 
