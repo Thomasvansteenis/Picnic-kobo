@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Shopping Cart - Picnic{% endblock %}
+
+{% block content %}
+<h1>Shopping Cart</h1>
+
+{% if cart and cart.get('items') %}
+    <div class="cart-summary">
+        <div class="cart-total">
+            Total Items: {{ cart.get('total_count', 0) }}
+        </div>
+        {% if cart.get('total_price') %}
+        <div class="cart-total">
+            Total Price: €{{ "%.2f"|format(cart.total_price / 100) }}
+        </div>
+        {% endif %}
+    </div>
+
+    {% for item in cart.get('items', []) %}
+    <div class="cart-item">
+        <div class="item-name">
+            {{ item.get('name', 'Unknown Product') }}
+        </div>
+        <div class="item-info">
+            Quantity: {{ item.get('quantity', 0) }}
+        </div>
+        {% if item.get('price') %}
+        <div class="item-price">
+            Price: €{{ "%.2f"|format(item.price / 100) }}
+        </div>
+        {% endif %}
+        {% if item.get('unit_quantity') %}
+        <div class="item-info">
+            {{ item.unit_quantity }}
+        </div>
+        {% endif %}
+
+        <form method="POST" action="{{ url_for('remove_from_cart') }}" style="margin-top: 10px;">
+            <input type="hidden" name="product_id" value="{{ item.get('id') }}">
+            <input type="number" name="quantity" value="1" min="1" max="{{ item.get('quantity', 1) }}" style="width: 80px; display: inline-block;">
+            <button type="submit">Remove</button>
+        </form>
+    </div>
+    {% endfor %}
+
+    <div style="margin-top: 20px;">
+        <form method="POST" action="{{ url_for('clear_cart') }}" onsubmit="return confirm('Clear entire cart?');">
+            <button type="submit" style="background: #fff; border: 2px solid #000;">Clear Cart</button>
+        </form>
+    </div>
+
+{% else %}
+    <div class="cart-item">
+        <p>Your cart is empty.</p>
+        <p style="margin-top: 10px;"><a href="{{ url_for('search') }}">Search for products</a> to add to your cart.</p>
+    </div>
+{% endif %}
+
+<div style="margin-top: 30px; padding: 15px; border: 1px solid #000;">
+    <p><strong>Note:</strong> To complete your order, please use the official Picnic mobile app or website.</p>
+</div>
+{% endblock %}

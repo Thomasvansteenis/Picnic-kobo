@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  picnic-kobo:
+    build: .
+    container_name: picnic-kobo
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-change_this_to_a_random_string}
+      - FLASK_HOST=0.0.0.0
+      - FLASK_PORT=5000
+    restart: unless-stopped
+    volumes:
+      # Mount .env file if you want to use it (optional)
+      - ./.env:/app/.env:ro

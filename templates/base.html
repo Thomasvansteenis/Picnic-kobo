@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Picnic Cart{% endblock %}</title>
+    <style>
+        /* E-ink optimized styles - high contrast, no animations, large touch targets */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 16px;
+            line-height: 1.6;
+            color: #000;
+            background: #fff;
+            padding: 10px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #000;
+        }
+
+        h2 {
+            font-size: 20px;
+            margin: 15px 0 10px 0;
+        }
+
+        a {
+            color: #000;
+            text-decoration: underline;
+        }
+
+        /* Navigation */
+        nav {
+            margin-bottom: 20px;
+            padding: 10px 0;
+            border-bottom: 1px solid #000;
+        }
+
+        nav a {
+            display: inline-block;
+            padding: 10px 15px;
+            margin-right: 10px;
+            margin-bottom: 5px;
+            border: 2px solid #000;
+            text-decoration: none;
+            background: #fff;
+        }
+
+        nav a:hover, nav a:active {
+            background: #eee;
+        }
+
+        /* Forms */
+        input[type="text"],
+        input[type="password"],
+        input[type="number"],
+        select {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: 2px solid #000;
+            font-size: 16px;
+            background: #fff;
+            color: #000;
+        }
+
+        button,
+        input[type="submit"] {
+            padding: 12px 20px;
+            margin: 5px 5px 5px 0;
+            border: 2px solid #000;
+            background: #fff;
+            color: #000;
+            font-size: 16px;
+            cursor: pointer;
+            min-width: 100px;
+        }
+
+        button:hover,
+        button:active,
+        input[type="submit"]:hover,
+        input[type="submit"]:active {
+            background: #eee;
+        }
+
+        /* Messages */
+        .messages {
+            margin: 15px 0;
+        }
+
+        .message {
+            padding: 12px;
+            margin: 8px 0;
+            border: 2px solid #000;
+        }
+
+        .message.success {
+            background: #fff;
+        }
+
+        .message.error {
+            background: #fff;
+            font-weight: bold;
+        }
+
+        /* Product/Cart items */
+        .product-item,
+        .cart-item {
+            padding: 15px;
+            margin: 10px 0;
+            border: 2px solid #000;
+            background: #fff;
+        }
+
+        .product-name,
+        .item-name {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .product-price,
+        .item-price {
+            font-size: 16px;
+            margin: 5px 0;
+        }
+
+        .product-info,
+        .item-info {
+            font-size: 14px;
+            color: #333;
+            margin: 3px 0;
+        }
+
+        /* Search form */
+        .search-form {
+            margin: 20px 0;
+        }
+
+        .search-form input[type="text"] {
+            display: inline-block;
+            width: 70%;
+            margin-right: 2%;
+        }
+
+        .search-form button {
+            display: inline-block;
+            width: 25%;
+        }
+
+        /* Cart summary */
+        .cart-summary {
+            margin: 20px 0;
+            padding: 15px;
+            border: 3px solid #000;
+            background: #fff;
+        }
+
+        .cart-total {
+            font-size: 20px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 600px) {
+            body {
+                font-size: 14px;
+            }
+
+            .search-form input[type="text"],
+            .search-form button {
+                width: 100%;
+                display: block;
+            }
+        }
+    </style>
+</head>
+<body>
+    {% if 'picnic_username' in session %}
+    <nav>
+        <a href="{{ url_for('cart') }}">Cart</a>
+        <a href="{{ url_for('search') }}">Search</a>
+        <a href="{{ url_for('logout') }}">Logout</a>
+    </nav>
+    {% endif %}
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="messages">
+            {% for category, message in messages %}
+            <div class="message {{ category }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+</body>
+</html>

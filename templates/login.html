@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}Login - Picnic Cart{% endblock %}
+
+{% block content %}
+<h1>Login to Picnic</h1>
+
+<form method="POST" action="{{ url_for('login') }}">
+    <label for="username">Email:</label>
+    <input type="text" id="username" name="username" required autofocus>
+
+    <label for="password">Password:</label>
+    <input type="password" id="password" name="password" required>
+
+    <label for="country">Country:</label>
+    <select id="country" name="country">
+        <option value="NL" selected>Netherlands</option>
+        <option value="DE">Germany</option>
+        <option value="BE">Belgium</option>
+    </select>
+
+    <input type="submit" value="Login">
+</form>
+
+<div style="margin-top: 30px; padding: 15px; border: 1px solid #000;">
+    <h2>About</h2>
+    <p>This is a simple web interface for managing your Picnic grocery cart, optimized for e-ink displays like Kobo e-readers.</p>
+    <p style="margin-top: 10px;"><strong>Note:</strong> Your credentials are stored only in your session and are not saved permanently.</p>
+</div>
+{% endblock %}
