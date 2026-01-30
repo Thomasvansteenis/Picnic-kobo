@@ -24,10 +24,12 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 COPY app.py .
 COPY templates ./templates
 
-# Copy run script to proper s6-overlay location
-RUN mkdir -p /etc/services.d/picnic-cart
-COPY run.sh /etc/services.d/picnic-cart/run
-RUN chmod a+x /etc/services.d/picnic-cart/run
+# Copy and set up run script
+COPY run.sh /
+RUN chmod a+x /run.sh
 
 # Expose port
 EXPOSE 5000
+
+# Run the add-on
+CMD ["/run.sh"]
