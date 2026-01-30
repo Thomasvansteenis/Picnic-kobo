@@ -1,6 +1,6 @@
 {
   "name": "Picnic Shopping Cart",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "slug": "picnic-cart",
   "description": "Manage your Picnic grocery shopping cart from your Kobo e-reader or any browser",
   "arch": ["armhf", "armv7", "aarch64", "amd64", "i386"],
