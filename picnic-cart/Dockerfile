@@ -1,36 +1,32 @@
-# Use Home Assistant base image
 ARG BUILD_FROM
 FROM ${BUILD_FROM}
 
-# Set shell
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-
-# Install Python and dependencies
+# Install requirements
 RUN apk add --no-cache \
     python3 \
     py3-pip \
-    jq \
-    && pip3 install --no-cache-dir --upgrade pip
+    jq
+
+# Upgrade pip
+RUN pip3 install --no-cache-dir --upgrade pip
 
 # Set working directory
 WORKDIR /app
 
-# Copy requirements first for better caching
+# Copy and install Python dependencies
 COPY requirements.txt .
-
-# Install Python dependencies
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-# Copy application files
+# Copy application
 COPY app.py .
 COPY templates ./templates
 
-# Copy run script to s6-overlay service directory
-RUN mkdir -p /etc/services.d/picnic-cart
-COPY run.sh /etc/services.d/picnic-cart/run
-COPY finish.sh /etc/services.d/picnic-cart/finish
-RUN chmod a+x /etc/services.d/picnic-cart/run && \
-    chmod a+x /etc/services.d/picnic-cart/finish
+# Copy startup script
+COPY run.sh /run.sh
+RUN chmod +x /run.sh
 
 # Expose port
 EXPOSE 5000
+
+# Run the application
+CMD ["/run.sh"]

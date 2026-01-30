@@ -1,34 +1,36 @@
-#!/usr/bin/with-contenv bash
-# ==============================================================================
-# Home Assistant Add-on: Picnic Shopping Cart
-# ==============================================================================
+#!/bin/bash
+set -e
 
-# Read configuration directly from options.json
-CONFIG_PATH=/data/options.json
+echo "===================================="
+echo "Picnic Shopping Cart Add-on"
+echo "===================================="
 
-if [ -f "$CONFIG_PATH" ]; then
-    FLASK_SECRET_KEY=$(jq -r '.flask_secret_key // "change-this-to-a-random-secret-key-minimum-32-characters-long"' "$CONFIG_PATH")
+# Read configuration from Home Assistant
+CONFIG_FILE="/data/options.json"
+
+if [ -f "$CONFIG_FILE" ]; then
+    echo "Reading configuration..."
+    FLASK_SECRET_KEY=$(jq -r '.flask_secret_key // "change-this-to-a-random-secret-key-minimum-32-characters-long"' "$CONFIG_FILE")
 else
+    echo "WARNING: Configuration file not found, using defaults"
     FLASK_SECRET_KEY="change-this-to-a-random-secret-key-minimum-32-characters-long"
 fi
 
-# Log startup
-echo "[INFO] Starting Picnic Shopping Cart add-on..."
-
 # Validate secret key
 if [ "$FLASK_SECRET_KEY" = "change-this-to-a-random-secret-key-minimum-32-characters-long" ]; then
-    echo "[WARNING] You are using the default secret key!"
-    echo "[WARNING] Please change it in the add-on configuration for better security."
+    echo "WARNING: Using default secret key!"
+    echo "WARNING: Please change it in the add-on configuration for security."
 fi
 
 # Export environment variables
-export FLASK_SECRET_KEY="${FLASK_SECRET_KEY}"
+export FLASK_SECRET_KEY
 export FLASK_HOST="0.0.0.0"
 export FLASK_PORT="5000"
 
-# Log ready state
-echo "[INFO] Starting Flask application on port 5000..."
+echo "Configuration loaded"
+echo "Starting Flask application on port 5000..."
+echo "===================================="
 
-# Start the Flask application
-cd /app || exit 1
+# Start Flask app
+cd /app
 exec python3 app.py
