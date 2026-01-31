@@ -5,40 +5,40 @@
 {% block content %}
 <h1>Shopping Cart</h1>
 
-{% if cart and cart.get('items') %}
+{% if cart and cart.items %}
     <div class="cart-summary">
         <div class="cart-total">
-            Total Items: {{ cart.get('total_count', 0) }}
+            Total Items: {{ cart.total_count or cart.items|length or 0 }}
         </div>
-        {% if cart.get('total_price') %}
+        {% if cart.total_price %}
         <div class="cart-total">
             Total Price: €{{ "%.2f"|format(cart.total_price / 100) }}
         </div>
         {% endif %}
     </div>
 
-    {% for item in cart.get('items', []) %}
+    {% for item in cart.items %}
     <div class="cart-item">
         <div class="item-name">
-            {{ item.get('name', 'Unknown Product') }}
+            {{ item.name or 'Unknown Product' }}
         </div>
         <div class="item-info">
-            Quantity: {{ item.get('quantity', 0) }}
+            Quantity: {{ item.quantity or 0 }}
         </div>
-        {% if item.get('price') %}
+        {% if item.price %}
         <div class="item-price">
             Price: €{{ "%.2f"|format(item.price / 100) }}
         </div>
         {% endif %}
-        {% if item.get('unit_quantity') %}
+        {% if item.unit_quantity %}
         <div class="item-info">
             {{ item.unit_quantity }}
         </div>
         {% endif %}
 
         <form method="POST" action="{{ url_for('remove_from_cart') }}" style="margin-top: 10px;">
-            <input type="hidden" name="product_id" value="{{ item.get('id') }}">
-            <input type="number" name="quantity" value="1" min="1" max="{{ item.get('quantity', 1) }}" style="width: 80px; display: inline-block;">
+            <input type="hidden" name="product_id" value="{{ item.id }}">
+            <input type="number" name="quantity" value="1" min="1" max="{{ item.quantity or 1 }}" style="width: 80px; display: inline-block;">
             <button type="submit">Remove</button>
         </form>
     </div>
