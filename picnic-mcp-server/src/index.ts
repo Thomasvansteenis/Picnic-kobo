@@ -54,12 +54,11 @@ async function initializePicnicClient() {
   try {
     console.log("Initializing Picnic API client...");
     picnicClient = new PicnicAPI({
-      authKey: config.username,
       countryCode: config.countryCode as any,
     });
 
     console.log("Attempting to authenticate with Picnic...");
-    await picnicClient.login(config.password);
+    await picnicClient.login(config.username, config.password);
     console.log("Successfully authenticated with Picnic API");
     return picnicClient;
   } catch (error) {
