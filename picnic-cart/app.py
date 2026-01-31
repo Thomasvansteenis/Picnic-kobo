@@ -7,26 +7,42 @@ from functools import wraps
 
 load_dotenv()
 
+__version__ = "2.0.3"
+
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-key-change-in-production')
+
+# Cache for Picnic API instances to avoid re-authentication on every request
+_api_cache = {}
 
 # Store Picnic API instance in session context
 def get_picnic_api():
     """Get or create Picnic API instance for current session"""
-    if 'picnic_username' in session and 'picnic_password' in session:
-        try:
-            api = PicnicAPI(
-                username=session['picnic_username'],
-                password=session['picnic_password'],
-                country_code=session.get('picnic_country', 'NL')
-            )
-            return api
-        except Exception as e:
-            print(f'Error connecting to Picnic API: {str(e)}')
-            print(traceback.format_exc())
-            flash(f'Picnic authentication error: {str(e)}', 'error')
-            return None
-    return None
+    if 'picnic_username' not in session or 'picnic_password' not in session:
+        return None
+
+    username = session['picnic_username']
+    cache_key = f"{username}:{session.get('picnic_country', 'NL')}"
+
+    # Return cached instance if available
+    if cache_key in _api_cache:
+        return _api_cache[cache_key]
+
+    # Create new instance and cache it
+    try:
+        print(f"Creating new PicnicAPI instance for {username}")
+        api = PicnicAPI(
+            username=username,
+            password=session['picnic_password'],
+            country_code=session.get('picnic_country', 'NL')
+        )
+        _api_cache[cache_key] = api
+        return api
+    except Exception as e:
+        print(f'Error connecting to Picnic API: {str(e)}')
+        print(traceback.format_exc())
+        flash(f'Picnic authentication error: {str(e)}', 'error')
+        return None
 
 def login_required(f):
     """Decorator to require login"""
@@ -62,6 +78,12 @@ def login():
             session['picnic_username'] = username
             session['picnic_password'] = password
             session['picnic_country'] = country
+
+            # Cache the API instance to avoid re-authentication on every request
+            cache_key = f"{username}:{country}"
+            _api_cache[cache_key] = api
+            print(f"Cached API instance for {cache_key}")
+
             flash('Login successful!', 'success')
             return redirect(url_for('cart'))
         except Exception as e:
@@ -74,6 +96,13 @@ def login():
 @app.route('/logout')
 def logout():
     """Logout and clear session"""
+    # Clear cached API instance
+    if 'picnic_username' in session:
+        cache_key = f"{session['picnic_username']}:{session.get('picnic_country', 'NL')}"
+        if cache_key in _api_cache:
+            del _api_cache[cache_key]
+            print(f"Cleared API cache for {cache_key}")
+
     session.clear()
     flash('Logged out successfully', 'success')
     return redirect(url_for('login'))
@@ -191,8 +220,13 @@ def clear_cart():
 
     return redirect(url_for('cart'))
 
+@app.route('/version')
+def version():
+    """Return application version"""
+    return jsonify({'version': __version__})
+
 if __name__ == '__main__':
     host = os.getenv('FLASK_HOST', '0.0.0.0')
     port = int(os.getenv('FLASK_PORT', 5000))
-    print(f"Starting Flask app on {host}:{port}")
+    print(f"Starting Picnic Cart App v{__version__} on {host}:{port}")
     app.run(host=host, port=port, debug=True)
