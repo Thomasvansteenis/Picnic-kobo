@@ -349,7 +349,7 @@ async function main() {
 
         if (req.method === "GET" && req.url === "/health") {
           res.writeHead(200);
-          res.end(JSON.stringify({ status: "ok", version: "1.0.0" }));
+          res.end(JSON.stringify({ status: "ok", version: "1.0.6" }));
           return;
         }
 
@@ -368,13 +368,22 @@ async function main() {
           req.on("end", async () => {
             try {
               const { name, arguments: args } = JSON.parse(body);
+              console.log(`Calling tool: ${name} with args:`, args);
+
               const response = await server.request(
                 { method: "tools/call", params: { name, arguments: args } },
                 CallToolRequestSchema
               );
+
+              console.log(`Tool ${name} completed successfully`);
               res.writeHead(200);
               res.end(JSON.stringify(response));
             } catch (error) {
+              console.error("ERROR in /call-tool endpoint:");
+              console.error("Error details:", error);
+              console.error("Stack trace:", error instanceof Error ? error.stack : "No stack trace");
+              console.error("Request body:", body);
+
               const errorMessage = error instanceof Error ? error.message : String(error);
               res.writeHead(500);
               res.end(JSON.stringify({ error: errorMessage }));
