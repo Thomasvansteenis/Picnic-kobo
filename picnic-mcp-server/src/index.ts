@@ -349,7 +349,7 @@ async function main() {
 
         if (req.method === "GET" && req.url === "/health") {
           res.writeHead(200);
-          res.end(JSON.stringify({ status: "ok", version: "1.0.9" }));
+          res.end(JSON.stringify({ status: "ok", version: "1.0.10" }));
           return;
         }
 
@@ -399,8 +399,13 @@ async function main() {
                   } else {
                     throw new Error("Neither getCart() nor getShoppingCart() methods available");
                   }
-                  console.log("DEBUG: Cart data structure:");
-                  console.log(JSON.stringify(cart, null, 2).substring(0, 1000) + "...");
+                  console.log("DEBUG: Full cart structure:");
+                  console.log(JSON.stringify(cart, null, 2));
+                  if (cart?.items && cart.items.length > 0) {
+                    console.log("DEBUG: First cart item fields:");
+                    console.log("Keys:", Object.keys(cart.items[0]));
+                    console.log("First item:", JSON.stringify(cart.items[0], null, 2));
+                  }
                   response = {
                     content: [{ type: "text", text: JSON.stringify(cart, null, 2) }],
                   };
