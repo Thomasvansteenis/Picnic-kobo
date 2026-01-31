@@ -37,7 +37,7 @@ async function initializePicnicClient() {
   try {
     picnicClient = new PicnicAPI({
       authKey: config.username,
-      countryCode: config.countryCode,
+      countryCode: config.countryCode as any,
     });
 
     await picnicClient.login(config.password);
@@ -77,8 +77,8 @@ const GetListsSchema = z.object({});
 const GetCategoriesSchema = z.object({});
 
 // Helper function to convert Zod schema to JSON schema
-function zodToToolInput(schema: z.ZodType<any>) {
-  return zodToJsonSchema(schema);
+function zodToToolInput(schema: z.ZodType<any>): any {
+  return zodToJsonSchema(schema) as any;
 }
 
 // Define available tools
