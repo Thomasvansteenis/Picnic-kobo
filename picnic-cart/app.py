@@ -53,17 +53,10 @@ def login():
         country = request.form.get('country', 'NL')
 
         try:
-            # Test connection
+            # Test connection - PicnicAPI constructor validates credentials
             print(f"Attempting login for user: {username} in country: {country}")
             api = PicnicAPI(username=username, password=password, country_code=country)
-
-            # Test API by trying to get cart (validates authentication)
-            try:
-                api.get_cart()
-                print("Login successful - cart retrieved")
-            except Exception as cart_error:
-                print(f"Cart retrieval test failed: {str(cart_error)}")
-                raise Exception(f"Authentication test failed: {str(cart_error)}")
+            print("Login successful - credentials validated")
 
             # Store in session
             session['picnic_username'] = username
