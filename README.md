@@ -6,24 +6,51 @@ Home Assistant add-on repository for the Picnic Shopping Cart application.
 
 ## About
 
-This repository contains Home Assistant add-ons for managing your Picnic grocery shopping cart from your Kobo e-reader or any web browser.
+This repository contains Home Assistant add-ons for managing your Picnic grocery shopping cart from your Kobo e-reader or any web browser. The project uses a **Model Context Protocol (MCP)** architecture for better security, maintainability, and extensibility.
 
 ### Available Add-ons
 
-- **Picnic Shopping Cart** - E-ink optimized web interface for Picnic grocery delivery service
+- **Picnic MCP Server** (v1.0.0) - Model Context Protocol server for Picnic API communication
+- **Picnic Shopping Cart** (v3.0.0) - E-ink optimized web interface for Picnic grocery delivery service
+
+### New in v3.0: MCP Architecture
+
+The application now uses a two-component architecture:
+1. **MCP Server**: Handles all Picnic API communication and authentication
+2. **Web UI**: Provides the user interface for Kobo e-readers and browsers
+
+[📚 Read the full MCP Architecture documentation](MCP_ARCHITECTURE.md)
 
 ## Installation
 
-### Method 1: One-Click Install (Easiest)
+### Quick Start
+
+Both add-ons must be installed for the system to work:
+
+**Step 1: Add the Repository**
 
 Click this button to add the repository to your Home Assistant:
 
 [![Add Repository](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FThomasvansteenis%2FPicnic-kobo)
 
-Then:
+**Step 2: Install Picnic MCP Server**
+
+1. Click on "Picnic MCP Server"
+2. Click "Install"
+3. Configure with your Picnic credentials:
+   - Email address
+   - Password
+   - Country (NL/DE/BE)
+4. Click "Start"
+5. Wait for it to show as "Running"
+
+**Step 3: Install Picnic Shopping Cart**
+
 1. Click on "Picnic Shopping Cart"
 2. Click "Install"
-3. Configure the add-on
+3. Configure:
+   - Set a strong `flask_secret_key` (generate one with the command below)
+   - MCP server URL defaults to `http://localhost:3000` (usually correct)
 4. Click "Start"
 
 ### Method 2: Manual Repository Addition
@@ -116,8 +143,10 @@ This is an unofficial add-on and is not affiliated with, endorsed by, or connect
 
 ## Credits
 
-- Built with [Flask](https://flask.palletsprojects.com/)
-- Uses [python-picnic-api](https://github.com/MikeBrink/python-picnic-api)
+- Built with [Flask](https://flask.palletsprojects.com/) (Web UI) and [Node.js](https://nodejs.org/) (MCP Server)
+- MCP Server based on [mcp-picnic](https://github.com/ivo-toby/mcp-picnic) by ivo-toby
+- Uses [Model Context Protocol](https://modelcontextprotocol.io/) by Anthropic
+- Picnic API integration via [picnic-api](https://www.npmjs.com/package/picnic-api) npm package
 - Optimized for Kobo e-readers and e-ink displays
 
 ## License

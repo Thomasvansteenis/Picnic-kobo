@@ -1,0 +1,31 @@
+{
+  "name": "Picnic MCP Server",
+  "version": "1.0.0",
+  "slug": "picnic-mcp-server",
+  "description": "Model Context Protocol server for Picnic grocery service - enables AI assistants and applications to interact with your Picnic account",
+  "arch": ["armhf", "armv7", "aarch64", "amd64", "i386"],
+  "startup": "services",
+  "boot": "auto",
+  "ports": {
+    "3000/tcp": 3000
+  },
+  "ports_description": {
+    "3000/tcp": "MCP HTTP Server"
+  },
+  "options": {
+    "picnic_username": "",
+    "picnic_password": "",
+    "picnic_country": "NL",
+    "http_port": 3000,
+    "http_host": "0.0.0.0"
+  },
+  "schema": {
+    "picnic_username": "email",
+    "picnic_password": "password",
+    "picnic_country": "list(NL|DE|BE)",
+    "http_port": "port",
+    "http_host": "str"
+  },
+  "url": "https://github.com/Thomasvansteenis/Picnic-kobo",
+  "panel_icon": "mdi:server-network"
+}

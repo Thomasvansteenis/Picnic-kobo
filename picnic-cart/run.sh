@@ -11,9 +11,11 @@ CONFIG_FILE="/data/options.json"
 if [ -f "$CONFIG_FILE" ]; then
     echo "Reading configuration..."
     FLASK_SECRET_KEY=$(jq -r '.flask_secret_key // "change-this-to-a-random-secret-key-minimum-32-characters-long"' "$CONFIG_FILE")
+    MCP_SERVER_URL=$(jq -r '.mcp_server_url // "http://localhost:3000"' "$CONFIG_FILE")
 else
     echo "WARNING: Configuration file not found, using defaults"
     FLASK_SECRET_KEY="change-this-to-a-random-secret-key-minimum-32-characters-long"
+    MCP_SERVER_URL="http://localhost:3000"
 fi
 
 # Validate secret key
@@ -26,6 +28,7 @@ fi
 export FLASK_SECRET_KEY
 export FLASK_HOST="0.0.0.0"
 export FLASK_PORT="5000"
+export MCP_SERVER_URL
 
 echo "Configuration loaded"
 echo "Starting Flask application on port 5000..."
