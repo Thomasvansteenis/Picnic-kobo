@@ -382,6 +382,8 @@ async function main() {
                 case "search_products": {
                   const { query } = SearchProductsSchema.parse(args);
                   const results = await picnicClient.search(query);
+                  console.log("DEBUG: Search results sample (first 2 items):");
+                  console.log(JSON.stringify(results?.slice(0, 2), null, 2));
                   response = {
                     content: [{ type: "text", text: JSON.stringify(results, null, 2) }],
                   };
@@ -397,6 +399,8 @@ async function main() {
                   } else {
                     throw new Error("Neither getCart() nor getShoppingCart() methods available");
                   }
+                  console.log("DEBUG: Cart data structure:");
+                  console.log(JSON.stringify(cart, null, 2).substring(0, 1000) + "...");
                   response = {
                     content: [{ type: "text", text: JSON.stringify(cart, null, 2) }],
                   };
