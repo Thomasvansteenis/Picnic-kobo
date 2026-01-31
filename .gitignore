@@ -13,3 +13,9 @@ instance/
 *.swp
 *.swo
 *~
+
+# Node.js / TypeScript
+node_modules/
+dist/
+package-lock.json
+*.tsbuildinfo
