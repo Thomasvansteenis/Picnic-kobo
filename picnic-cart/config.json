@@ -1,8 +1,8 @@
 {
   "name": "Picnic Shopping Cart",
-  "version": "2.0.2",
+  "version": "3.0.0",
   "slug": "picnic-cart",
-  "description": "Manage your Picnic grocery shopping cart from your Kobo e-reader or any browser",
+  "description": "Manage your Picnic grocery shopping cart from your Kobo e-reader or any browser. Uses Picnic MCP Server for API communication.",
   "arch": ["armhf", "armv7", "aarch64", "amd64", "i386"],
   "startup": "application",
   "boot": "auto",
@@ -13,10 +13,12 @@
     "5000/tcp": "Web interface"
   },
   "options": {
-    "flask_secret_key": "change-this-to-a-random-secret-key-minimum-32-characters-long"
+    "flask_secret_key": "change-this-to-a-random-secret-key-minimum-32-characters-long",
+    "mcp_server_url": "http://localhost:3000"
   },
   "schema": {
-    "flask_secret_key": "str"
+    "flask_secret_key": "str",
+    "mcp_server_url": "url"
   },
   "url": "https://github.com/Thomasvansteenis/Picnic-kobo",
   "webui": "http://[HOST]:[PORT:5000]",

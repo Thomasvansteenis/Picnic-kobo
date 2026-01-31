@@ -1,48 +1,47 @@
 import os
 import traceback
+import requests
+import json
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
-from python_picnic_api import PicnicAPI
 from dotenv import load_dotenv
 from functools import wraps
 
 load_dotenv()
 
-__version__ = "2.0.3"
+__version__ = "3.0.0"
 
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-key-change-in-production')
 
-# Cache for Picnic API instances to avoid re-authentication on every request
-_api_cache = {}
+# MCP Server configuration
+MCP_SERVER_URL = os.getenv('MCP_SERVER_URL', 'http://localhost:3000')
 
-# Store Picnic API instance in session context
-def get_picnic_api():
-    """Get or create Picnic API instance for current session"""
-    if 'picnic_username' not in session or 'picnic_password' not in session:
-        return None
+# Helper function to call MCP server tools
+def call_mcp_tool(tool_name, arguments=None):
+    """Call an MCP server tool via HTTP"""
+    if arguments is None:
+        arguments = {}
 
-    username = session['picnic_username']
-    cache_key = f"{username}:{session.get('picnic_country', 'NL')}"
-
-    # Return cached instance if available
-    if cache_key in _api_cache:
-        return _api_cache[cache_key]
-
-    # Create new instance and cache it
     try:
-        print(f"Creating new PicnicAPI instance for {username}")
-        api = PicnicAPI(
-            username=username,
-            password=session['picnic_password'],
-            country_code=session.get('picnic_country', 'NL')
+        response = requests.post(
+            f"{MCP_SERVER_URL}/call-tool",
+            json={"name": tool_name, "arguments": arguments},
+            timeout=10
         )
-        _api_cache[cache_key] = api
-        return api
-    except Exception as e:
-        print(f'Error connecting to Picnic API: {str(e)}')
-        print(traceback.format_exc())
-        flash(f'Picnic authentication error: {str(e)}', 'error')
-        return None
+        response.raise_for_status()
+        result = response.json()
+
+        # Extract text content from MCP response
+        if 'content' in result and len(result['content']) > 0:
+            content_text = result['content'][0].get('text', '')
+            try:
+                return json.loads(content_text) if content_text else {}
+            except:
+                return content_text
+        return result
+    except requests.RequestException as e:
+        print(f'Error calling MCP tool {tool_name}: {str(e)}')
+        raise Exception(f'MCP server error: {str(e)}')
 
 def login_required(f):
     """Decorator to require login"""
@@ -62,30 +61,35 @@ def index():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    """Login page"""
+    """Login page - Note: Authentication is handled by MCP server"""
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
         country = request.form.get('country', 'NL')
 
+        if not username or not password:
+            flash('Username and password are required', 'error')
+            return render_template('login.html')
+
         try:
-            # Test connection - PicnicAPI constructor validates credentials
-            print(f"Attempting login for user: {username} in country: {country}")
-            api = PicnicAPI(username=username, password=password, country_code=country)
-            print("Login successful - credentials validated")
+            # Check if MCP server is accessible
+            print(f"Testing connection to MCP server at {MCP_SERVER_URL}")
+            health_response = requests.get(f"{MCP_SERVER_URL}/health", timeout=5)
+            health_response.raise_for_status()
+            print("MCP server is accessible")
 
-            # Store in session
+            # Store in session (MCP server handles actual authentication)
+            session['logged_in'] = True
             session['picnic_username'] = username
-            session['picnic_password'] = password
             session['picnic_country'] = country
-
-            # Cache the API instance to avoid re-authentication on every request
-            cache_key = f"{username}:{country}"
-            _api_cache[cache_key] = api
-            print(f"Cached API instance for {cache_key}")
+            print(f"Session created for user: {username} in country: {country}")
 
             flash('Login successful!', 'success')
             return redirect(url_for('cart'))
+        except requests.RequestException as e:
+            print(f'MCP server connection failed: {str(e)}')
+            print(traceback.format_exc())
+            flash(f'Cannot connect to Picnic service. Please ensure the MCP server is running: {str(e)}', 'error')
         except Exception as e:
             print(f'Login failed: {str(e)}')
             print(traceback.format_exc())
@@ -96,13 +100,6 @@ def login():
 @app.route('/logout')
 def logout():
     """Logout and clear session"""
-    # Clear cached API instance
-    if 'picnic_username' in session:
-        cache_key = f"{session['picnic_username']}:{session.get('picnic_country', 'NL')}"
-        if cache_key in _api_cache:
-            del _api_cache[cache_key]
-            print(f"Cleared API cache for {cache_key}")
-
     session.clear()
     flash('Logged out successfully', 'success')
     return redirect(url_for('login'))
@@ -111,14 +108,9 @@ def logout():
 @login_required
 def cart():
     """View shopping cart"""
-    api = get_picnic_api()
-    if not api:
-        session.clear()
-        return redirect(url_for('login'))
-
     try:
         print(f"Fetching cart for user: {session.get('picnic_username')}")
-        cart_data = api.get_cart()
+        cart_data = call_mcp_tool('get_cart')
         print(f"Cart data retrieved successfully")
         return render_template('cart.html', cart=cart_data)
     except Exception as e:
@@ -132,17 +124,12 @@ def cart():
 def search():
     """Search for products"""
     query = request.args.get('q', '')
-    api = get_picnic_api()
-
-    if not api:
-        session.clear()
-        return redirect(url_for('login'))
-
     results = []
+
     if query:
         try:
             print(f"Searching for: {query}")
-            results = api.search(query)
+            results = call_mcp_tool('search_products', {'query': query})
             print(f"Found {len(results) if results else 0} results")
         except Exception as e:
             print(f'Search error: {str(e)}')
@@ -158,14 +145,9 @@ def add_to_cart():
     product_id = request.form.get('product_id')
     quantity = int(request.form.get('quantity', 1))
 
-    api = get_picnic_api()
-    if not api:
-        session.clear()
-        return redirect(url_for('login'))
-
     try:
         print(f"Adding product {product_id} (qty: {quantity}) to cart")
-        api.add_product(product_id, quantity)
+        call_mcp_tool('add_to_cart', {'productId': product_id, 'count': quantity})
         flash('Product added to cart!', 'success')
     except Exception as e:
         print(f'Error adding product: {str(e)}')
@@ -184,14 +166,9 @@ def remove_from_cart():
     product_id = request.form.get('product_id')
     quantity = int(request.form.get('quantity', 1))
 
-    api = get_picnic_api()
-    if not api:
-        session.clear()
-        return redirect(url_for('login'))
-
     try:
         print(f"Removing product {product_id} (qty: {quantity}) from cart")
-        api.remove_product(product_id, quantity)
+        call_mcp_tool('remove_from_cart', {'productId': product_id, 'count': quantity})
         flash('Product removed from cart', 'success')
     except Exception as e:
         print(f'Error removing product: {str(e)}')
@@ -204,14 +181,9 @@ def remove_from_cart():
 @login_required
 def clear_cart():
     """Clear entire cart"""
-    api = get_picnic_api()
-    if not api:
-        session.clear()
-        return redirect(url_for('login'))
-
     try:
         print("Clearing cart")
-        api.clear_cart()
+        call_mcp_tool('clear_cart')
         flash('Cart cleared', 'success')
     except Exception as e:
         print(f'Error clearing cart: {str(e)}')
