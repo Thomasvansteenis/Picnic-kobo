@@ -18,27 +18,29 @@
     </div>
 
     {% for item in cart['items'] %}
+    {% set article = item['items'][0] if item.get('items') and item['items']|length > 0 else {} %}
+    {% set quantity_decorator = article.get('decorators', [])|selectattr('type', 'equalto', 'QUANTITY')|first if article else none %}
     <div class="cart-item">
         <div class="item-name">
-            {{ item['name'] or 'Unknown Product' }}
+            {{ article.get('name', 'Unknown Product') }}
         </div>
         <div class="item-info">
-            Quantity: {{ item['quantity'] or 0 }}
+            Quantity: {{ quantity_decorator.quantity if quantity_decorator else 0 }}
         </div>
-        {% if item.get('price') %}
+        {% if item.get('price') or article.get('price') %}
         <div class="item-price">
-            Price: €{{ "%.2f"|format(item['price'] / 100) }}
+            Price: €{{ "%.2f"|format((item.get('price') or article.get('price')) / 100) }}
         </div>
         {% endif %}
-        {% if item.get('unit_quantity') %}
+        {% if article.get('unit_quantity') %}
         <div class="item-info">
-            {{ item['unit_quantity'] }}
+            {{ article['unit_quantity'] }}
         </div>
         {% endif %}
 
         <form method="POST" action="{{ url_for('remove_from_cart') }}" style="margin-top: 10px;">
-            <input type="hidden" name="product_id" value="{{ item['id'] }}">
-            <input type="number" name="quantity" value="1" min="1" max="{{ item['quantity'] or 1 }}" style="width: 80px; display: inline-block;">
+            <input type="hidden" name="product_id" value="{{ article.get('id', item.get('id')) }}">
+            <input type="number" name="quantity" value="1" min="1" max="{{ quantity_decorator.quantity if quantity_decorator else 1 }}" style="width: 80px; display: inline-block;">
             <button type="submit">Remove</button>
         </form>
     </div>
