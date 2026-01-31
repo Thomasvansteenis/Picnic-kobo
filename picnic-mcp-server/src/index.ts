@@ -196,15 +196,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "get_cart": {
-        const cart = await picnicClient.getShoppingCart();
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(cart, null, 2),
-            },
-          ],
-        };
+        try {
+          // Try both method names - the API might use getCart() instead of getShoppingCart()
+          let cart;
+          if (typeof picnicClient.getCart === 'function') {
+            cart = await picnicClient.getCart();
+          } else if (typeof picnicClient.getShoppingCart === 'function') {
+            cart = await picnicClient.getShoppingCart();
+          } else {
+            throw new Error("Neither getCart() nor getShoppingCart() methods are available on picnicClient");
+          }
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(cart, null, 2),
+              },
+            ],
+          };
+        } catch (error) {
+          console.error("Error in get_cart:", error);
+          console.error("Available methods:", Object.getOwnPropertyNames(Object.getPrototypeOf(picnicClient)));
+          throw error;
+        }
       }
 
       case "add_to_cart": {
