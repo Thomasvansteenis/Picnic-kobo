@@ -349,7 +349,7 @@ async function main() {
 
         if (req.method === "GET" && req.url === "/health") {
           res.writeHead(200);
-          res.end(JSON.stringify({ status: "ok", version: "1.0.7" }));
+          res.end(JSON.stringify({ status: "ok", version: "1.0.9" }));
           return;
         }
 
