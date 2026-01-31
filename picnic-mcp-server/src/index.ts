@@ -12,6 +12,12 @@ import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { createServer } from "http";
 
+// Debug: Log raw environment variables
+console.log("DEBUG: Raw environment variables:");
+console.log(`  PICNIC_USERNAME: ${process.env.PICNIC_USERNAME ? `"${process.env.PICNIC_USERNAME}"` : 'undefined'}`);
+console.log(`  PICNIC_PASSWORD: ${process.env.PICNIC_PASSWORD ? `[${process.env.PICNIC_PASSWORD.length} chars]` : 'undefined'}`);
+console.log(`  PICNIC_COUNTRY_CODE: ${process.env.PICNIC_COUNTRY_CODE || 'undefined'}`);
+
 // Configuration from environment variables
 const config = {
   username: process.env.PICNIC_USERNAME?.trim() || "",

@@ -24,6 +24,8 @@ fi
 if [ -z "$PICNIC_USERNAME" ] || [ -z "$PICNIC_PASSWORD" ]; then
     echo "ERROR: Picnic username and password are required!"
     echo "Please configure them in the add-on settings."
+    echo "DEBUG: PICNIC_USERNAME='$PICNIC_USERNAME'"
+    echo "DEBUG: PICNIC_PASSWORD length: ${#PICNIC_PASSWORD}"
     exit 1
 fi
 
@@ -37,10 +39,14 @@ export ENABLE_HTTP_SERVER="true"
 
 echo "Configuration loaded successfully"
 echo "Username: $PICNIC_USERNAME"
+echo "Password length: ${#PICNIC_PASSWORD} characters"
 echo "Country: $PICNIC_COUNTRY_CODE"
 echo "HTTP Server: http://$HTTP_HOST:$HTTP_PORT"
 echo "===================================="
 echo "Starting MCP Server..."
+echo "DEBUG: Environment check before starting Node:"
+echo "  PICNIC_USERNAME is set: $([ -n "$PICNIC_USERNAME" ] && echo 'yes' || echo 'no')"
+echo "  PICNIC_PASSWORD is set: $([ -n "$PICNIC_PASSWORD" ] && echo 'yes' || echo 'no')"
 
 # Start the MCP server
 cd /app
