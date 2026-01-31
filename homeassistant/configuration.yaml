@@ -1,0 +1,125 @@
+# =============================================================================
+# Picnic MCP Server - Home Assistant Configuration
+# =============================================================================
+# Voeg deze configuratie toe aan je configuration.yaml of include het als:
+#   rest_command: !include picnic_rest_commands.yaml
+#
+# Zorg dat je MCP server URL correct is ingesteld (standaard: http://localhost:3000)
+# Als je Docker gebruikt, vervang localhost door de container naam of IP.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# REST Commands voor Picnic MCP Server
+# -----------------------------------------------------------------------------
+# Deze commands communiceren direct met de MCP server via HTTP POST
+# De MCP server moet draaien op de aangegeven URL (standaard poort 3000)
+# -----------------------------------------------------------------------------
+
+rest_command:
+  # ---------------------------------------------------------------------------
+  # Zoek producten in de Picnic catalogus
+  # ---------------------------------------------------------------------------
+  picnic_search_products:
+    url: "http://localhost:3000/call-tool"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    payload: '{"name": "search_products", "arguments": {"query": "{{ query }}"}}'
+    timeout: 30
+    content_type: "application/json"
+
+  # ---------------------------------------------------------------------------
+  # Haal de huidige winkelwagen op
+  # ---------------------------------------------------------------------------
+  picnic_get_cart:
+    url: "http://localhost:3000/call-tool"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    payload: '{"name": "get_cart", "arguments": {}}'
+    timeout: 30
+    content_type: "application/json"
+
+  # ---------------------------------------------------------------------------
+  # Voeg product toe aan winkelwagen (via product ID)
+  # ---------------------------------------------------------------------------
+  picnic_add_to_cart:
+    url: "http://localhost:3000/call-tool"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    payload: '{"name": "add_to_cart", "arguments": {"productId": "{{ product_id }}", "count": {{ count | default(1) }}}}'
+    timeout: 30
+    content_type: "application/json"
+
+  # ---------------------------------------------------------------------------
+  # Verwijder product uit winkelwagen
+  # ---------------------------------------------------------------------------
+  picnic_remove_from_cart:
+    url: "http://localhost:3000/call-tool"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    payload: '{"name": "remove_from_cart", "arguments": {"productId": "{{ product_id }}", "count": {{ count | default(1) }}}}'
+    timeout: 30
+    content_type: "application/json"
+
+  # ---------------------------------------------------------------------------
+  # Leeg de hele winkelwagen
+  # ---------------------------------------------------------------------------
+  picnic_clear_cart:
+    url: "http://localhost:3000/call-tool"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    payload: '{"name": "clear_cart", "arguments": {}}'
+    timeout: 30
+    content_type: "application/json"
+
+  # ---------------------------------------------------------------------------
+  # Haal gebruikersinformatie op
+  # ---------------------------------------------------------------------------
+  picnic_get_user:
+    url: "http://localhost:3000/call-tool"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    payload: '{"name": "get_user", "arguments": {}}'
+    timeout: 30
+    content_type: "application/json"
+
+  # ---------------------------------------------------------------------------
+  # Haal beschikbare bezorgmomenten op
+  # ---------------------------------------------------------------------------
+  picnic_get_deliveries:
+    url: "http://localhost:3000/call-tool"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    payload: '{"name": "get_deliveries", "arguments": {}}'
+    timeout: 30
+    content_type: "application/json"
+
+  # ---------------------------------------------------------------------------
+  # Haal boodschappenlijstjes op
+  # ---------------------------------------------------------------------------
+  picnic_get_lists:
+    url: "http://localhost:3000/call-tool"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    payload: '{"name": "get_lists", "arguments": {}}'
+    timeout: 30
+    content_type: "application/json"
+
+  # ---------------------------------------------------------------------------
+  # Haal productcategorieën op
+  # ---------------------------------------------------------------------------
+  picnic_get_categories:
+    url: "http://localhost:3000/call-tool"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    payload: '{"name": "get_categories", "arguments": {}}'
+    timeout: 30
+    content_type: "application/json"

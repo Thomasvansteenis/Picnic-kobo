@@ -1,0 +1,377 @@
+# =============================================================================
+# Picnic MCP Server - Home Assistant Scripts voor Gemini AI
+# =============================================================================
+# Voeg deze scripts toe aan je scripts.yaml of include ze als:
+#   script: !include picnic_scripts.yaml
+#
+# Deze scripts zijn ontworpen om aangeroepen te worden door Google Gemini AI
+# via de Home Assistant Conversation integratie.
+#
+# Gemini kan deze scripts aanroepen met commando's zoals:
+#   - "Voeg melk toe aan mijn Picnic mandje"
+#   - "Wat zit er in mijn Picnic winkelwagen?"
+#   - "Zoek naar pindakaas bij Picnic"
+#   - "Leeg mijn Picnic winkelwagen"
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# ZOEKEN EN TOEVOEGEN - Hoofd script voor Gemini
+# -----------------------------------------------------------------------------
+# Dit is het meest gebruikte script: zoek op productnaam en voeg toe
+# Gemini kan dit aanroepen met natuurlijke taal
+# -----------------------------------------------------------------------------
+
+picnic_product_zoeken_en_toevoegen:
+  alias: "Picnic: Zoek en voeg product toe"
+  description: >
+    Zoekt naar een product bij Picnic op naam en voegt het eerste resultaat
+    toe aan de winkelwagen. Gebruik dit script wanneer de gebruiker vraagt
+    om een product toe te voegen aan Picnic. Dit script zoekt eerst naar
+    het product en voegt dan automatisch het beste resultaat toe.
+  icon: mdi:cart-plus
+  mode: queued
+  max: 5
+  fields:
+    product_naam:
+      name: Product Naam
+      description: "De naam van het product om te zoeken en toe te voegen (bijv. 'halfvolle melk', 'pindakaas', 'bananen')"
+      required: true
+      example: "halfvolle melk"
+      selector:
+        text:
+    aantal:
+      name: Aantal
+      description: "Het aantal producten om toe te voegen (standaard 1)"
+      required: false
+      default: 1
+      example: 2
+      selector:
+        number:
+          min: 1
+          max: 99
+          mode: box
+  sequence:
+    # Stap 1: Zoek naar het product
+    - service: rest_command.picnic_search_products
+      data:
+        query: "{{ product_naam }}"
+      response_variable: search_result
+
+    # Stap 2: Log het zoekresultaat (voor debugging)
+    - service: system_log.write
+      data:
+        message: "Picnic zoekresultaat voor '{{ product_naam }}': {{ search_result }}"
+        level: info
+
+    # Stap 3: Stuur bevestiging
+    - service: persistent_notification.create
+      data:
+        title: "Picnic Bestelling"
+        message: "Zoekt naar '{{ product_naam }}' en voegt {{ aantal | default(1) }} toe aan je mandje..."
+        notification_id: "picnic_add_{{ now().timestamp() | int }}"
+
+
+# -----------------------------------------------------------------------------
+# PRODUCT TOEVOEGEN VIA ID
+# -----------------------------------------------------------------------------
+# Voeg een specifiek product toe via het Picnic product ID
+# Handig als je het exacte product ID al weet
+# -----------------------------------------------------------------------------
+
+picnic_product_toevoegen:
+  alias: "Picnic: Voeg product toe via ID"
+  description: >
+    Voegt een product toe aan de Picnic winkelwagen via het product ID.
+    Gebruik dit als je het exacte product ID weet. Voor zoeken op naam,
+    gebruik het script 'picnic_product_zoeken_en_toevoegen'.
+  icon: mdi:cart-plus
+  mode: queued
+  max: 5
+  fields:
+    product_id:
+      name: Product ID
+      description: "Het unieke Picnic product ID (te vinden via zoeken)"
+      required: true
+      example: "10407428"
+      selector:
+        text:
+    aantal:
+      name: Aantal
+      description: "Het aantal producten om toe te voegen"
+      required: false
+      default: 1
+      example: 2
+      selector:
+        number:
+          min: 1
+          max: 99
+          mode: box
+  sequence:
+    - service: rest_command.picnic_add_to_cart
+      data:
+        product_id: "{{ product_id }}"
+        count: "{{ aantal | default(1) }}"
+      response_variable: add_result
+
+    - service: persistent_notification.create
+      data:
+        title: "Picnic Bestelling"
+        message: "Product {{ product_id }} ({{ aantal | default(1) }}x) toegevoegd aan je mandje."
+        notification_id: "picnic_add_{{ now().timestamp() | int }}"
+
+
+# -----------------------------------------------------------------------------
+# WINKELWAGEN BEKIJKEN
+# -----------------------------------------------------------------------------
+# Haal de huidige inhoud van de winkelwagen op
+# -----------------------------------------------------------------------------
+
+picnic_winkelwagen_bekijken:
+  alias: "Picnic: Bekijk winkelwagen"
+  description: >
+    Haalt de huidige inhoud van de Picnic winkelwagen op en toont deze.
+    Gebruik dit wanneer de gebruiker vraagt wat er in het mandje zit
+    of de bestelling wil controleren.
+  icon: mdi:cart
+  mode: single
+  sequence:
+    - service: rest_command.picnic_get_cart
+      response_variable: cart_result
+
+    - service: system_log.write
+      data:
+        message: "Picnic winkelwagen: {{ cart_result }}"
+        level: info
+
+    - service: persistent_notification.create
+      data:
+        title: "Picnic Winkelwagen"
+        message: "Je winkelwagen is opgehaald. Bekijk de logs voor details."
+        notification_id: "picnic_cart_{{ now().timestamp() | int }}"
+
+
+# -----------------------------------------------------------------------------
+# PRODUCT VERWIJDEREN
+# -----------------------------------------------------------------------------
+# Verwijder een product uit de winkelwagen
+# -----------------------------------------------------------------------------
+
+picnic_product_verwijderen:
+  alias: "Picnic: Verwijder product"
+  description: >
+    Verwijdert een product uit de Picnic winkelwagen via het product ID.
+    Gebruik dit wanneer de gebruiker een product wil verwijderen uit het mandje.
+  icon: mdi:cart-minus
+  mode: queued
+  max: 5
+  fields:
+    product_id:
+      name: Product ID
+      description: "Het product ID om te verwijderen"
+      required: true
+      example: "10407428"
+      selector:
+        text:
+    aantal:
+      name: Aantal
+      description: "Het aantal om te verwijderen (standaard 1)"
+      required: false
+      default: 1
+      example: 1
+      selector:
+        number:
+          min: 1
+          max: 99
+          mode: box
+  sequence:
+    - service: rest_command.picnic_remove_from_cart
+      data:
+        product_id: "{{ product_id }}"
+        count: "{{ aantal | default(1) }}"
+      response_variable: remove_result
+
+    - service: persistent_notification.create
+      data:
+        title: "Picnic Bestelling"
+        message: "Product {{ product_id }} ({{ aantal | default(1) }}x) verwijderd uit je mandje."
+        notification_id: "picnic_remove_{{ now().timestamp() | int }}"
+
+
+# -----------------------------------------------------------------------------
+# WINKELWAGEN LEGEN
+# -----------------------------------------------------------------------------
+# Leeg de hele winkelwagen
+# -----------------------------------------------------------------------------
+
+picnic_winkelwagen_legen:
+  alias: "Picnic: Leeg winkelwagen"
+  description: >
+    Leegt de hele Picnic winkelwagen. Alle producten worden verwijderd.
+    Gebruik dit wanneer de gebruiker opnieuw wil beginnen of alles wil annuleren.
+  icon: mdi:cart-off
+  mode: single
+  sequence:
+    - service: rest_command.picnic_clear_cart
+      response_variable: clear_result
+
+    - service: persistent_notification.create
+      data:
+        title: "Picnic Bestelling"
+        message: "Je winkelwagen is geleegd."
+        notification_id: "picnic_clear_{{ now().timestamp() | int }}"
+
+
+# -----------------------------------------------------------------------------
+# PRODUCTEN ZOEKEN
+# -----------------------------------------------------------------------------
+# Zoek naar producten zonder toe te voegen
+# -----------------------------------------------------------------------------
+
+picnic_producten_zoeken:
+  alias: "Picnic: Zoek producten"
+  description: >
+    Zoekt naar producten in de Picnic catalogus. Retourneert een lijst
+    met zoekresultaten inclusief product IDs, namen en prijzen.
+    Gebruik dit om producten te vinden voordat je ze toevoegt.
+  icon: mdi:magnify
+  mode: single
+  fields:
+    zoekterm:
+      name: Zoekterm
+      description: "De zoekterm voor producten (bijv. 'kaas', 'brood', 'appels')"
+      required: true
+      example: "pindakaas"
+      selector:
+        text:
+  sequence:
+    - service: rest_command.picnic_search_products
+      data:
+        query: "{{ zoekterm }}"
+      response_variable: search_result
+
+    - service: system_log.write
+      data:
+        message: "Picnic zoekresultaten voor '{{ zoekterm }}': {{ search_result }}"
+        level: info
+
+    - service: persistent_notification.create
+      data:
+        title: "Picnic Zoekresultaten"
+        message: "Zoekresultaten voor '{{ zoekterm }}' gevonden. Bekijk de logs voor details."
+        notification_id: "picnic_search_{{ now().timestamp() | int }}"
+
+
+# -----------------------------------------------------------------------------
+# BEZORGMOMENTEN BEKIJKEN
+# -----------------------------------------------------------------------------
+# Haal beschikbare bezorgmomenten op
+# -----------------------------------------------------------------------------
+
+picnic_bezorgmomenten_bekijken:
+  alias: "Picnic: Bekijk bezorgmomenten"
+  description: >
+    Haalt de beschikbare bezorgmomenten en geplande leveringen op.
+    Gebruik dit wanneer de gebruiker wil weten wanneer Picnic kan leveren.
+  icon: mdi:truck-delivery
+  mode: single
+  sequence:
+    - service: rest_command.picnic_get_deliveries
+      response_variable: delivery_result
+
+    - service: system_log.write
+      data:
+        message: "Picnic bezorgmomenten: {{ delivery_result }}"
+        level: info
+
+    - service: persistent_notification.create
+      data:
+        title: "Picnic Bezorgmomenten"
+        message: "Bezorgmomenten opgehaald. Bekijk de logs voor details."
+        notification_id: "picnic_deliveries_{{ now().timestamp() | int }}"
+
+
+# -----------------------------------------------------------------------------
+# BOODSCHAPPENLIJSTJES BEKIJKEN
+# -----------------------------------------------------------------------------
+# Haal opgeslagen boodschappenlijstjes op
+# -----------------------------------------------------------------------------
+
+picnic_lijstjes_bekijken:
+  alias: "Picnic: Bekijk boodschappenlijstjes"
+  description: >
+    Haalt je opgeslagen Picnic boodschappenlijstjes op.
+    Gebruik dit om te zien welke lijstjes je hebt opgeslagen in de Picnic app.
+  icon: mdi:format-list-checkbox
+  mode: single
+  sequence:
+    - service: rest_command.picnic_get_lists
+      response_variable: lists_result
+
+    - service: system_log.write
+      data:
+        message: "Picnic boodschappenlijstjes: {{ lists_result }}"
+        level: info
+
+    - service: persistent_notification.create
+      data:
+        title: "Picnic Lijstjes"
+        message: "Boodschappenlijstjes opgehaald. Bekijk de logs voor details."
+        notification_id: "picnic_lists_{{ now().timestamp() | int }}"
+
+
+# -----------------------------------------------------------------------------
+# ACCOUNTGEGEVENS BEKIJKEN
+# -----------------------------------------------------------------------------
+# Haal gebruikersinformatie op
+# -----------------------------------------------------------------------------
+
+picnic_account_bekijken:
+  alias: "Picnic: Bekijk accountgegevens"
+  description: >
+    Haalt je Picnic accountgegevens op zoals naam, e-mail en adres.
+    Gebruik dit om je accountinformatie te controleren.
+  icon: mdi:account
+  mode: single
+  sequence:
+    - service: rest_command.picnic_get_user
+      response_variable: user_result
+
+    - service: system_log.write
+      data:
+        message: "Picnic gebruiker: {{ user_result }}"
+        level: info
+
+    - service: persistent_notification.create
+      data:
+        title: "Picnic Account"
+        message: "Accountgegevens opgehaald. Bekijk de logs voor details."
+        notification_id: "picnic_user_{{ now().timestamp() | int }}"
+
+
+# -----------------------------------------------------------------------------
+# CATEGORIEËN BEKIJKEN
+# -----------------------------------------------------------------------------
+# Haal productcategorieën op
+# -----------------------------------------------------------------------------
+
+picnic_categorieen_bekijken:
+  alias: "Picnic: Bekijk categorieën"
+  description: >
+    Haalt alle productcategorieën op uit de Picnic catalogus.
+    Handig om te weten welke producten beschikbaar zijn.
+  icon: mdi:tag-multiple
+  mode: single
+  sequence:
+    - service: rest_command.picnic_get_categories
+      response_variable: categories_result
+
+    - service: system_log.write
+      data:
+        message: "Picnic categorieën: {{ categories_result }}"
+        level: info
+
+    - service: persistent_notification.create
+      data:
+        title: "Picnic Categorieën"
+        message: "Categorieën opgehaald. Bekijk de logs voor details."
+        notification_id: "picnic_categories_{{ now().timestamp() | int }}"
