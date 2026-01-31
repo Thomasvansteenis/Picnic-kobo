@@ -12,10 +12,16 @@ import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { createServer } from "http";
 
+// Debug: Log raw environment variables
+console.log("DEBUG: Raw environment variables:");
+console.log(`  PICNIC_USERNAME: ${process.env.PICNIC_USERNAME ? `"${process.env.PICNIC_USERNAME}"` : 'undefined'}`);
+console.log(`  PICNIC_PASSWORD: ${process.env.PICNIC_PASSWORD ? `[${process.env.PICNIC_PASSWORD.length} chars]` : 'undefined'}`);
+console.log(`  PICNIC_COUNTRY_CODE: ${process.env.PICNIC_COUNTRY_CODE || 'undefined'}`);
+
 // Configuration from environment variables
 const config = {
-  username: process.env.PICNIC_USERNAME || "",
-  password: process.env.PICNIC_PASSWORD || "",
+  username: process.env.PICNIC_USERNAME?.trim() || "",
+  password: process.env.PICNIC_PASSWORD?.trim() || "",
   countryCode: process.env.PICNIC_COUNTRY_CODE || "NL",
   httpPort: parseInt(process.env.HTTP_PORT || "3000"),
   httpHost: process.env.HTTP_HOST || "0.0.0.0",
@@ -23,6 +29,8 @@ const config = {
 };
 
 console.log("Starting Picnic MCP Server...");
+console.log(`Username: ${config.username ? config.username : '(not configured)'}`);
+console.log(`Password: ${config.password ? '***configured***' : '(not configured)'}`);
 console.log(`Country: ${config.countryCode}`);
 console.log(`HTTP Server: ${config.enableHttpServer ? `Enabled on ${config.httpHost}:${config.httpPort}` : "Disabled"}`);
 
@@ -30,21 +38,37 @@ console.log(`HTTP Server: ${config.enableHttpServer ? `Enabled on ${config.httpH
 let picnicClient: any = null;
 
 async function initializePicnicClient() {
-  if (!config.username || !config.password) {
-    throw new Error("PICNIC_USERNAME and PICNIC_PASSWORD environment variables are required");
+  // Validate credentials
+  if (!config.username || config.username.length === 0) {
+    const errorMsg = "PICNIC_USERNAME is not configured. Please set your Picnic email in the addon configuration.";
+    console.error(errorMsg);
+    throw new Error(errorMsg);
+  }
+
+  if (!config.password || config.password.length === 0) {
+    const errorMsg = "PICNIC_PASSWORD is not configured. Please set your Picnic password in the addon configuration.";
+    console.error(errorMsg);
+    throw new Error(errorMsg);
   }
 
   try {
+    console.log("Initializing Picnic API client...");
     picnicClient = new PicnicAPI({
       authKey: config.username,
       countryCode: config.countryCode as any,
     });
 
+    console.log("Attempting to authenticate with Picnic...");
     await picnicClient.login(config.password);
     console.log("Successfully authenticated with Picnic API");
     return picnicClient;
   } catch (error) {
     console.error("Failed to initialize Picnic client:", error);
+    if (error instanceof Error) {
+      if (error.message.includes("Invalid credentials") || error.message.includes("401")) {
+        console.error("Authentication failed. Please check your Picnic email and password in the addon configuration.");
+      }
+    }
     throw error;
   }
 }
