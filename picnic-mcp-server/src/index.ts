@@ -349,7 +349,7 @@ async function main() {
 
         if (req.method === "GET" && req.url === "/health") {
           res.writeHead(200);
-          res.end(JSON.stringify({ status: "ok", version: "1.0.6" }));
+          res.end(JSON.stringify({ status: "ok", version: "1.0.7" }));
           return;
         }
 
@@ -370,10 +370,102 @@ async function main() {
               const { name, arguments: args } = JSON.parse(body);
               console.log(`Calling tool: ${name} with args:`, args);
 
-              const response = await server.request(
-                { method: "tools/call", params: { name, arguments: args } },
-                CallToolRequestSchema
-              );
+              // Ensure client is initialized
+              if (!picnicClient) {
+                await initializePicnicClient();
+              }
+
+              // Call the tool directly (bypassing MCP Server.request which requires connection)
+              let response;
+
+              switch (name) {
+                case "search_products": {
+                  const { query } = SearchProductsSchema.parse(args);
+                  const results = await picnicClient.search(query);
+                  response = {
+                    content: [{ type: "text", text: JSON.stringify(results, null, 2) }],
+                  };
+                  break;
+                }
+
+                case "get_cart": {
+                  let cart;
+                  if (typeof picnicClient.getCart === 'function') {
+                    cart = await picnicClient.getCart();
+                  } else if (typeof picnicClient.getShoppingCart === 'function') {
+                    cart = await picnicClient.getShoppingCart();
+                  } else {
+                    throw new Error("Neither getCart() nor getShoppingCart() methods available");
+                  }
+                  response = {
+                    content: [{ type: "text", text: JSON.stringify(cart, null, 2) }],
+                  };
+                  break;
+                }
+
+                case "add_to_cart": {
+                  const { productId, count } = AddToCartSchema.parse(args);
+                  await picnicClient.addProductToShoppingCart(productId, count);
+                  const cart = await picnicClient.getShoppingCart();
+                  response = {
+                    content: [{ type: "text", text: `Added ${count}x product ${productId}\n\n${JSON.stringify(cart, null, 2)}` }],
+                  };
+                  break;
+                }
+
+                case "remove_from_cart": {
+                  const { productId, count } = RemoveFromCartSchema.parse(args);
+                  await picnicClient.removeProductFromShoppingCart(productId, count);
+                  const cart = await picnicClient.getShoppingCart();
+                  response = {
+                    content: [{ type: "text", text: `Removed ${count}x product ${productId}\n\n${JSON.stringify(cart, null, 2)}` }],
+                  };
+                  break;
+                }
+
+                case "clear_cart": {
+                  await picnicClient.clearShoppingCart();
+                  response = {
+                    content: [{ type: "text", text: "Shopping cart cleared successfully" }],
+                  };
+                  break;
+                }
+
+                case "get_user": {
+                  const user = await picnicClient.getUserDetails();
+                  response = {
+                    content: [{ type: "text", text: JSON.stringify(user, null, 2) }],
+                  };
+                  break;
+                }
+
+                case "get_deliveries": {
+                  const deliveries = await picnicClient.getDeliveries();
+                  response = {
+                    content: [{ type: "text", text: JSON.stringify(deliveries, null, 2) }],
+                  };
+                  break;
+                }
+
+                case "get_lists": {
+                  const lists = await picnicClient.getLists();
+                  response = {
+                    content: [{ type: "text", text: JSON.stringify(lists, null, 2) }],
+                  };
+                  break;
+                }
+
+                case "get_categories": {
+                  const categories = await picnicClient.getCategories();
+                  response = {
+                    content: [{ type: "text", text: JSON.stringify(categories, null, 2) }],
+                  };
+                  break;
+                }
+
+                default:
+                  throw new Error(`Unknown tool: ${name}`);
+              }
 
               console.log(`Tool ${name} completed successfully`);
               res.writeHead(200);
