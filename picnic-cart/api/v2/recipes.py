@@ -17,8 +17,9 @@ logger = logging.getLogger(__name__)
 recipes_bp = Blueprint('recipes', __name__, url_prefix='/recipes')
 
 # Home Assistant configuration for Gemini
-HA_URL = os.getenv('HA_URL', 'http://homeassistant.local:8123')
-HA_TOKEN = os.getenv('HA_LONG_LIVED_TOKEN', '')
+# Use supervisor URL when running as an addon
+HA_URL = os.getenv('HA_URL', 'http://supervisor/core')
+HA_TOKEN = os.getenv('SUPERVISOR_TOKEN', os.getenv('HA_LONG_LIVED_TOKEN', ''))
 
 
 def call_gemini(prompt: str) -> str:
@@ -310,6 +311,62 @@ def add_to_cart():
 @require_auth
 def get_history():
     """Get recipe import history."""
+    user = get_current_user()
     limit = request.args.get('limit', 20, type=int)
-    # TODO: Implement from database
-    return jsonify({'recipes': []})
+
+    db = get_db()
+    with db.get_cursor() as cursor:
+        if not cursor:
+            return jsonify({'recipes': []})
+
+        cursor.execute(
+            """SELECT id, source_type, source_url, recipe_title,
+                      parsed_ingredients, matched_products,
+                      items_added_to_cart, created_at
+               FROM recipe_history
+               WHERE user_id = %s
+               ORDER BY created_at DESC
+               LIMIT %s""",
+            (user['id'], limit)
+        )
+        recipes = cursor.fetchall()
+
+    return jsonify({'recipes': [dict(r) for r in recipes] if recipes else []})
+
+
+@recipes_bp.route('/save-history', methods=['POST'])
+@require_auth
+def save_history():
+    """Save a recipe to history."""
+    user = get_current_user()
+    data = request.get_json()
+
+    db = get_db()
+    with db.get_cursor() as cursor:
+        if not cursor:
+            return jsonify({'error': 'Database not available'}), 503
+
+        try:
+            import json as json_module
+            cursor.execute(
+                """INSERT INTO recipe_history
+                   (user_id, source_type, source_url, recipe_title,
+                    parsed_ingredients, matched_products, items_added_to_cart)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)
+                   RETURNING id""",
+                (
+                    user['id'],
+                    data.get('source_type', 'url'),
+                    data.get('source_url'),
+                    data.get('recipe_title'),
+                    json_module.dumps(data.get('parsed_ingredients', [])),
+                    json_module.dumps(data.get('matched_products', [])),
+                    data.get('items_added_to_cart', 0)
+                )
+            )
+            result = cursor.fetchone()
+            return jsonify({'success': True, 'id': str(result['id'])})
+
+        except Exception as e:
+            logger.error(f"Failed to save recipe history: {e}")
+            return jsonify({'error': str(e)}), 500
