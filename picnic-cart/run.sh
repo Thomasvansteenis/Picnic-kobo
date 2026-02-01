@@ -14,9 +14,9 @@ if [ -f "$CONFIG_FILE" ]; then
     FLASK_SECRET_KEY=$(jq -r '.flask_secret_key // "change-this-to-a-random-secret-key-minimum-32-characters-long"' "$CONFIG_FILE")
     MCP_SERVER_URL=$(jq -r '.mcp_server_url // "http://localhost:3000"' "$CONFIG_FILE")
 
-    # Database configuration
+    # MariaDB configuration (Home Assistant MariaDB addon)
     DB_HOST=$(jq -r '.db_host // ""' "$CONFIG_FILE")
-    DB_PORT=$(jq -r '.db_port // "5432"' "$CONFIG_FILE")
+    DB_PORT=$(jq -r '.db_port // "3306"' "$CONFIG_FILE")
     DB_NAME=$(jq -r '.db_name // "picnic"' "$CONFIG_FILE")
     DB_USER=$(jq -r '.db_user // "picnic"' "$CONFIG_FILE")
     DB_PASSWORD=$(jq -r '.db_password // ""' "$CONFIG_FILE")
@@ -32,7 +32,7 @@ else
     FLASK_SECRET_KEY="change-this-to-a-random-secret-key-minimum-32-characters-long"
     MCP_SERVER_URL="http://localhost:3000"
     DB_HOST=""
-    DB_PORT="5432"
+    DB_PORT="3306"
     DB_NAME="picnic"
     DB_USER="picnic"
     DB_PASSWORD=""
@@ -57,9 +57,16 @@ fi
 if [ -z "$DB_HOST" ]; then
     echo "INFO: No database configured, running in memory-only mode"
     echo "INFO: Analytics and recurring lists will not persist"
+    echo ""
+    echo "TIP: To enable persistence, install the MariaDB addon and configure:"
+    echo "     - db_host: core-mariadb"
+    echo "     - db_name: picnic"
+    echo "     - db_user: your_mariadb_user"
+    echo "     - db_password: your_mariadb_password"
     DB_ENABLED="false"
 else
-    echo "INFO: PostgreSQL database configured at $DB_HOST:$DB_PORT/$DB_NAME"
+    echo "INFO: MariaDB database configured at $DB_HOST:$DB_PORT/$DB_NAME"
+    echo "INFO: Tables will be created automatically if they don't exist"
     DB_ENABLED="true"
 fi
 
@@ -81,7 +88,7 @@ export DEFAULT_UI_MODE
 echo ""
 echo "Configuration Summary:"
 echo "  - MCP Server: $MCP_SERVER_URL"
-echo "  - Database: $( [ "$DB_ENABLED" = "true" ] && echo "Enabled ($DB_HOST)" || echo "Disabled" )"
+echo "  - Database: $( [ "$DB_ENABLED" = "true" ] && echo "MariaDB ($DB_HOST:$DB_PORT)" || echo "Disabled (in-memory mode)" )"
 echo "  - Default UI Mode: $DEFAULT_UI_MODE"
 echo ""
 echo "Starting Flask application on port 5000..."

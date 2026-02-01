@@ -29,18 +29,12 @@ RUN npm run build
 # ==============================================================================
 FROM alpine:3.18
 
-# Install requirements including PostgreSQL client libs
+# Install requirements (PyMySQL is pure Python, no native deps needed)
 RUN apk add --no-cache \
     python3 \
     py3-pip \
     jq \
-    bash \
-    libpq \
-    postgresql-dev \
-    gcc \
-    python3-dev \
-    musl-dev \
-    libffi-dev
+    bash
 
 # Upgrade pip
 RUN pip3 install --no-cache-dir --upgrade pip
@@ -51,9 +45,6 @@ WORKDIR /app
 # Copy and install Python dependencies
 COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
-
-# Remove build dependencies to reduce image size
-RUN apk del gcc python3-dev musl-dev postgresql-dev libffi-dev
 
 # Copy application files
 COPY app.py .
