@@ -344,15 +344,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "get_order_history": {
         const { filter, limit } = GetOrderHistorySchema.parse(args);
-        // Get deliveries with filter - pass filter array directly (picnic-api v3.x signature)
-        const deliveries = await picnicClient.getDeliveries(filter === 'ALL' ? [] : [filter]);
-        const limitedDeliveries = deliveries?.slice(0, limit) || [];
+        // Get all deliveries without filter (Picnic API may not support filter in POST body)
+        // Then filter client-side based on status
+        const allDeliveries = await picnicClient.getDeliveries();
+        let deliveries = allDeliveries || [];
+
+        // Apply client-side filtering if not ALL
+        if (filter !== 'ALL') {
+          deliveries = deliveries.filter((d: any) => d.status === filter);
+        }
+
+        const limitedDeliveries = deliveries.slice(0, limit);
         return {
           content: [
             {
               type: "text",
               text: JSON.stringify({
-                total: deliveries?.length || 0,
+                total: deliveries.length,
                 returned: limitedDeliveries.length,
                 filter,
                 orders: limitedDeliveries
@@ -366,16 +374,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const { query, scope } = SearchOrdersSchema.parse(args);
         const searchLower = query.toLowerCase();
 
-        // Get orders based on scope - pass filter array directly (picnic-api v3.x signature)
-        let orders: any[] = [];
-        if (scope === 'all' || scope === 'upcoming') {
-          const current = await picnicClient.getDeliveries(['CURRENT']);
-          orders = orders.concat(current || []);
+        // Get all deliveries and filter client-side
+        const allDeliveries = await picnicClient.getDeliveries();
+        let orders: any[] = allDeliveries || [];
+
+        // Apply scope filter
+        if (scope === 'upcoming') {
+          orders = orders.filter((d: any) => d.status === 'CURRENT');
+        } else if (scope === 'history') {
+          orders = orders.filter((d: any) => d.status === 'COMPLETED');
         }
-        if (scope === 'all' || scope === 'history') {
-          const completed = await picnicClient.getDeliveries(['COMPLETED']);
-          orders = orders.concat(completed || []);
-        }
+        // scope === 'all' keeps all orders
 
         // Search within orders for matching products
         const matches: any[] = [];
@@ -612,14 +621,21 @@ async function main() {
 
                 case "get_order_history": {
                   const { filter, limit } = GetOrderHistorySchema.parse(args);
-                  // Pass filter array directly (picnic-api v3.x signature)
-                  const deliveries = await picnicClient.getDeliveries(filter === 'ALL' ? [] : [filter]);
-                  const limitedDeliveries = deliveries?.slice(0, limit) || [];
+                  // Get all deliveries without filter, then filter client-side
+                  const allDeliveries = await picnicClient.getDeliveries();
+                  let deliveries = allDeliveries || [];
+
+                  // Apply client-side filtering if not ALL
+                  if (filter !== 'ALL') {
+                    deliveries = deliveries.filter((d: any) => d.status === filter);
+                  }
+
+                  const limitedDeliveries = deliveries.slice(0, limit);
                   response = {
                     content: [{
                       type: "text",
                       text: JSON.stringify({
-                        total: deliveries?.length || 0,
+                        total: deliveries.length,
                         returned: limitedDeliveries.length,
                         filter,
                         orders: limitedDeliveries
@@ -633,16 +649,17 @@ async function main() {
                   const { query, scope } = SearchOrdersSchema.parse(args);
                   const searchLower = query.toLowerCase();
 
-                  // Pass filter array directly (picnic-api v3.x signature)
-                  let orders: any[] = [];
-                  if (scope === 'all' || scope === 'upcoming') {
-                    const current = await picnicClient.getDeliveries(['CURRENT']);
-                    orders = orders.concat(current || []);
+                  // Get all deliveries and filter client-side
+                  const allDeliveries = await picnicClient.getDeliveries();
+                  let orders: any[] = allDeliveries || [];
+
+                  // Apply scope filter
+                  if (scope === 'upcoming') {
+                    orders = orders.filter((d: any) => d.status === 'CURRENT');
+                  } else if (scope === 'history') {
+                    orders = orders.filter((d: any) => d.status === 'COMPLETED');
                   }
-                  if (scope === 'all' || scope === 'history') {
-                    const completed = await picnicClient.getDeliveries(['COMPLETED']);
-                    orders = orders.concat(completed || []);
-                  }
+                  // scope === 'all' keeps all orders
 
                   const matches: any[] = [];
                   for (const order of orders) {
