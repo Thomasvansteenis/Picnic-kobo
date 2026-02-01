@@ -1,6 +1,6 @@
 {
   "name": "Picnic Shopping Cart",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "slug": "picnic-cart",
   "description": "Full-featured Picnic grocery shopping webapp with order analytics, recipe parsing, and recurring lists. Includes e-reader optimized mode for Kobo devices.",
   "arch": ["armhf", "armv7", "aarch64", "amd64", "i386"],

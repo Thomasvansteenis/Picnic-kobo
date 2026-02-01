@@ -3,6 +3,9 @@
 # ==============================================================================
 FROM node:20-alpine AS frontend-builder
 
+# Cache-busting argument - change this value to force rebuild
+ARG CACHEBUST=1
+
 WORKDIR /frontend
 
 # Copy package files
@@ -10,6 +13,10 @@ COPY frontend/package.json frontend/package-lock.json* ./
 
 # Install dependencies
 RUN npm install
+
+# Invalidate cache for source files copy
+ARG CACHEBUST
+RUN echo "Cache bust: $CACHEBUST"
 
 # Copy source files
 COPY frontend/ ./
