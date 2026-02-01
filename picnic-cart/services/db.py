@@ -20,12 +20,13 @@ class DatabaseService:
     """PostgreSQL database service."""
 
     def __init__(self):
+        self.enabled = os.getenv('DB_ENABLED', 'false').lower() == 'true'
         self.connection_params = {
-            'host': os.getenv('POSTGRES_HOST', 'localhost'),
-            'port': int(os.getenv('POSTGRES_PORT', '5432')),
-            'database': os.getenv('POSTGRES_DB', 'picnic'),
-            'user': os.getenv('POSTGRES_USER', 'picnic'),
-            'password': os.getenv('POSTGRES_PASSWORD', ''),
+            'host': os.getenv('DB_HOST', 'localhost'),
+            'port': int(os.getenv('DB_PORT', '5432')),
+            'database': os.getenv('DB_NAME', 'picnic'),
+            'user': os.getenv('DB_USER', 'picnic'),
+            'password': os.getenv('DB_PASSWORD', ''),
         }
         self._connection = None
 
@@ -34,6 +35,10 @@ class DatabaseService:
         """Get a database cursor with automatic connection management."""
         if not HAS_POSTGRES:
             logger.warning("psycopg2 not installed, database operations disabled")
+            yield None
+            return
+
+        if not self.enabled:
             yield None
             return
 
@@ -56,6 +61,10 @@ class DatabaseService:
         """Initialize database with schema."""
         if not HAS_POSTGRES:
             logger.warning("Database initialization skipped - psycopg2 not installed")
+            return
+
+        if not self.enabled:
+            logger.info("Database disabled, skipping initialization")
             return
 
         schema_path = os.path.join(

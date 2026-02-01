@@ -16,8 +16,9 @@ from .db import get_db
 logger = logging.getLogger(__name__)
 
 # Configuration
-SECRET_KEY = os.getenv('JWT_SECRET_KEY', os.getenv('FLASK_SECRET_KEY', 'change-me-in-production'))
-TOKEN_EXPIRY_MINUTES = int(os.getenv('SESSION_TIMEOUT_MINUTES', '30'))
+SECRET_KEY = os.getenv('JWT_SECRET', os.getenv('FLASK_SECRET_KEY', 'change-me-in-production'))
+TOKEN_EXPIRY_HOURS = int(os.getenv('JWT_EXPIRY_HOURS', '24'))
+TOKEN_EXPIRY_MINUTES = TOKEN_EXPIRY_HOURS * 60
 PIN_ATTEMPTS_LIMIT = 5
 PIN_LOCKOUT_MINUTES = 15
 
