@@ -188,10 +188,11 @@
     </style>
 </head>
 <body>
-    {% if 'picnic_username' in session %}
+    {% if session.get('logged_in') %}
     <nav>
-        <a href="{{ url_for('cart') }}">Cart</a>
-        <a href="{{ url_for('search') }}">Search</a>
+        <a href="{{ url_for('legacy_cart') }}">Cart</a>
+        <a href="{{ url_for('legacy_search') }}">Search</a>
+        <a href="{{ url_for('switch_to_full_mode') }}">Full Mode</a>
         <a href="{{ url_for('logout') }}">Logout</a>
     </nav>
     {% endif %}
