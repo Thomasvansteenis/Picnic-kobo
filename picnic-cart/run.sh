@@ -81,8 +81,7 @@ export DEFAULT_UI_MODE
 echo ""
 echo "Configuration Summary:"
 echo "  - MCP Server: $MCP_SERVER_URL"
-# echo "  - Database: $( [ \"$DB_ENABLED\" # = \"true\" ] && echo \"Enabled ($DB_HOST)
-# \" || echo \"Disabled\" )"
+echo "  - Database: $( [ \"$DB_ENABLED\" # = \"true\" ] && echo \"Enabled ($DB_HOST)# \" || echo \"Disabled\" )"
 echo "  - Default UI Mode: $DEFAULT_UI_MODE"
 echo ""
 echo "Starting Flask application on port 5000..."
