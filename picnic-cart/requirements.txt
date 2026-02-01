@@ -4,8 +4,8 @@ Werkzeug==3.0.1
 requests==2.31.0
 python-dotenv==1.0.0
 
-# Database
-psycopg2-binary==2.9.9
+# Database (MariaDB/MySQL)
+PyMySQL==1.1.0
 
 # Authentication
 PyJWT==2.8.0

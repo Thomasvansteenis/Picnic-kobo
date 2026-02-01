@@ -1,40 +1,43 @@
-"""Database service for PostgreSQL connection and operations."""
+"""Database service for MariaDB connection and operations."""
 
 import os
 import logging
+import json
 from contextlib import contextmanager
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 
 try:
-    import psycopg2
-    from psycopg2.extras import RealDictCursor
-    HAS_POSTGRES = True
+    import pymysql
+    from pymysql.cursors import DictCursor
+    HAS_MARIADB = True
 except ImportError:
-    HAS_POSTGRES = False
+    HAS_MARIADB = False
 
 logger = logging.getLogger(__name__)
 
 
 class DatabaseService:
-    """PostgreSQL database service."""
+    """MariaDB database service for Home Assistant MariaDB addon."""
 
     def __init__(self):
         self.enabled = os.getenv('DB_ENABLED', 'false').lower() == 'true'
         self.connection_params = {
-            'host': os.getenv('DB_HOST', 'localhost'),
-            'port': int(os.getenv('DB_PORT', '5432')),
+            'host': os.getenv('DB_HOST', 'core-mariadb'),
+            'port': int(os.getenv('DB_PORT', '3306')),
             'database': os.getenv('DB_NAME', 'picnic'),
             'user': os.getenv('DB_USER', 'picnic'),
             'password': os.getenv('DB_PASSWORD', ''),
+            'charset': 'utf8mb4',
+            'cursorclass': DictCursor if HAS_MARIADB else None,
         }
         self._connection = None
 
     @contextmanager
     def get_cursor(self):
         """Get a database cursor with automatic connection management."""
-        if not HAS_POSTGRES:
-            logger.warning("psycopg2 not installed, database operations disabled")
+        if not HAS_MARIADB:
+            logger.warning("PyMySQL not installed, database operations disabled")
             yield None
             return
 
@@ -44,8 +47,8 @@ class DatabaseService:
 
         conn = None
         try:
-            conn = psycopg2.connect(**self.connection_params)
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            conn = pymysql.connect(**self.connection_params)
+            cursor = conn.cursor()
             yield cursor
             conn.commit()
         except Exception as e:
@@ -58,15 +61,18 @@ class DatabaseService:
                 conn.close()
 
     def init_db(self):
-        """Initialize database with schema."""
-        if not HAS_POSTGRES:
-            logger.warning("Database initialization skipped - psycopg2 not installed")
+        """Initialize database with schema - creates tables if they don't exist."""
+        if not HAS_MARIADB:
+            logger.warning("Database initialization skipped - PyMySQL not installed")
             return
 
         if not self.enabled:
             logger.info("Database disabled, skipping initialization")
             return
 
+        logger.info("Checking and creating database tables if needed...")
+
+        # Read and execute the schema file
         schema_path = os.path.join(
             os.path.dirname(os.path.dirname(__file__)),
             'migrations',
@@ -80,10 +86,23 @@ class DatabaseService:
         with open(schema_path, 'r') as f:
             schema = f.read()
 
+        # Split by semicolon and execute each statement separately
+        # (MariaDB doesn't support multiple statements in one execute by default)
+        statements = [s.strip() for s in schema.split(';') if s.strip()]
+
         with self.get_cursor() as cursor:
             if cursor:
-                cursor.execute(schema)
-                logger.info("Database schema initialized")
+                for statement in statements:
+                    if statement:
+                        try:
+                            cursor.execute(statement)
+                        except pymysql.err.OperationalError as e:
+                            # Ignore "already exists" errors for CREATE TABLE IF NOT EXISTS
+                            if e.args[0] not in (1050, 1061, 1062):  # Table/index already exists
+                                logger.warning(f"SQL warning: {e}")
+                        except Exception as e:
+                            logger.warning(f"SQL statement warning: {e}")
+                logger.info("Database schema initialized/verified")
 
     # ========================================================================
     # User Operations
@@ -132,17 +151,21 @@ class DatabaseService:
             if not cursor:
                 return {'id': 'mock-id', 'picnic_user_id': picnic_user_id}
 
+            # Use INSERT ... ON DUPLICATE KEY UPDATE for MariaDB
             cursor.execute(
-                """INSERT INTO users (picnic_user_id, pin_hash, display_name, email)
-                   VALUES (%s, %s, %s, %s)
-                   ON CONFLICT (picnic_user_id)
-                   DO UPDATE SET
-                       pin_hash = COALESCE(EXCLUDED.pin_hash, users.pin_hash),
-                       display_name = COALESCE(EXCLUDED.display_name, users.display_name),
-                       email = COALESCE(EXCLUDED.email, users.email),
-                       updated_at = NOW()
-                   RETURNING *""",
+                """INSERT INTO users (id, picnic_user_id, pin_hash, display_name, email, created_at, updated_at)
+                   VALUES (UUID(), %s, %s, %s, %s, NOW(), NOW())
+                   ON DUPLICATE KEY UPDATE
+                       pin_hash = COALESCE(VALUES(pin_hash), pin_hash),
+                       display_name = COALESCE(VALUES(display_name), display_name),
+                       email = COALESCE(VALUES(email), email),
+                       updated_at = NOW()""",
                 (picnic_user_id, pin_hash, display_name, email)
+            )
+            # Fetch the user after upsert
+            cursor.execute(
+                "SELECT * FROM users WHERE picnic_user_id = %s",
+                (picnic_user_id,)
             )
             return cursor.fetchone()
 
@@ -171,7 +194,7 @@ class DatabaseService:
         with self.get_cursor() as cursor:
             if cursor:
                 cursor.execute(
-                    "INSERT INTO failed_pin_attempts (user_id) VALUES (%s)",
+                    "INSERT INTO failed_pin_attempts (id, user_id, attempted_at) VALUES (UUID(), %s, NOW())",
                     (user_id,)
                 )
 
@@ -182,7 +205,7 @@ class DatabaseService:
                 return 0
             cursor.execute(
                 """SELECT COUNT(*) as count FROM failed_pin_attempts
-                   WHERE user_id = %s AND attempted_at > NOW() - INTERVAL '%s minutes'""",
+                   WHERE user_id = %s AND attempted_at > DATE_SUB(NOW(), INTERVAL %s MINUTE)""",
                 (user_id, minutes)
             )
             result = cursor.fetchone()
@@ -206,37 +229,51 @@ class DatabaseService:
         with self.get_cursor() as cursor:
             if not cursor:
                 return []
+            # Get lists first
             cursor.execute(
-                """SELECT rl.*,
-                          COALESCE(json_agg(rli.*) FILTER (WHERE rli.id IS NOT NULL), '[]') as items
-                   FROM recurring_lists rl
-                   LEFT JOIN recurring_list_items rli ON rl.id = rli.list_id
-                   WHERE rl.user_id = %s AND rl.is_active = true
-                   GROUP BY rl.id
-                   ORDER BY rl.created_at DESC""",
+                """SELECT * FROM recurring_lists
+                   WHERE user_id = %s AND is_active = 1
+                   ORDER BY created_at DESC""",
                 (user_id,)
             )
-            return cursor.fetchall()
+            lists = cursor.fetchall()
+
+            # Get items for each list
+            for lst in lists:
+                cursor.execute(
+                    """SELECT * FROM recurring_list_items
+                       WHERE list_id = %s
+                       ORDER BY sort_order""",
+                    (lst['id'],)
+                )
+                lst['items'] = cursor.fetchall()
+
+            return lists
 
     def create_recurring_list(self, user_id: str, data: Dict) -> Dict:
         """Create a new recurring list."""
         with self.get_cursor() as cursor:
             if not cursor:
                 return {}
+            list_id = None
+            cursor.execute("SELECT UUID() as new_id")
+            list_id = cursor.fetchone()['new_id']
+
             cursor.execute(
                 """INSERT INTO recurring_lists
-                   (user_id, name, description, frequency, custom_days, is_auto_generated)
-                   VALUES (%s, %s, %s, %s, %s, %s)
-                   RETURNING *""",
+                   (id, user_id, name, description, frequency, custom_days, is_auto_generated, created_at, updated_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())""",
                 (
+                    list_id,
                     user_id,
                     data['name'],
                     data.get('description'),
                     data.get('frequency', 'weekly'),
                     data.get('custom_days'),
-                    data.get('is_auto_generated', False)
+                    1 if data.get('is_auto_generated', False) else 0
                 )
             )
+            cursor.execute("SELECT * FROM recurring_lists WHERE id = %s", (list_id,))
             return cursor.fetchone()
 
     # ========================================================================
@@ -250,13 +287,13 @@ class DatabaseService:
                 return
             cursor.execute(
                 """INSERT INTO order_cache
-                   (user_id, picnic_order_id, order_status, delivery_date,
+                   (id, user_id, picnic_order_id, order_status, delivery_date,
                     delivery_slot_start, delivery_slot_end, total_price,
-                    total_items, order_data)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                   ON CONFLICT (user_id, picnic_order_id) DO UPDATE SET
-                       order_status = EXCLUDED.order_status,
-                       order_data = EXCLUDED.order_data,
+                    total_items, order_data, created_at, synced_at)
+                   VALUES (UUID(), %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                   ON DUPLICATE KEY UPDATE
+                       order_status = VALUES(order_status),
+                       order_data = VALUES(order_data),
                        synced_at = NOW()""",
                 (
                     user_id,
@@ -267,7 +304,7 @@ class DatabaseService:
                     order_data.get('delivery_slot_end'),
                     order_data.get('total_price'),
                     order_data.get('total_items'),
-                    psycopg2.extras.Json(order_data) if HAS_POSTGRES else str(order_data)
+                    json.dumps(order_data)
                 )
             )
 
@@ -279,7 +316,7 @@ class DatabaseService:
             cursor.execute(
                 """SELECT * FROM purchase_frequency
                    WHERE user_id = %s AND total_purchases >= %s
-                   ORDER BY avg_days_between ASC NULLS LAST""",
+                   ORDER BY CASE WHEN avg_days_between IS NULL THEN 1 ELSE 0 END, avg_days_between ASC""",
                 (user_id, min_purchases)
             )
             return cursor.fetchall()
@@ -290,8 +327,15 @@ class DatabaseService:
             if not cursor:
                 return []
             cursor.execute(
-                """SELECT * FROM monthly_spending
-                   WHERE user_id = %s
+                """SELECT
+                       user_id,
+                       DATE_FORMAT(delivery_date, '%%Y-%%m-01') AS month,
+                       COUNT(*) AS order_count,
+                       SUM(total_price) AS total_spent,
+                       SUM(total_items) AS total_items
+                   FROM order_cache
+                   WHERE user_id = %s AND order_status = 'COMPLETED'
+                   GROUP BY user_id, DATE_FORMAT(delivery_date, '%%Y-%%m-01')
                    ORDER BY month DESC
                    LIMIT %s""",
                 (user_id, months)
