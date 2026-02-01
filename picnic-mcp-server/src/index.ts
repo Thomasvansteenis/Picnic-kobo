@@ -99,6 +99,23 @@ const GetListsSchema = z.object({});
 
 const GetCategoriesSchema = z.object({});
 
+const GetOrderHistorySchema = z.object({
+  filter: z.enum(['COMPLETED', 'CURRENT', 'ALL']).default('COMPLETED').describe("Filter for order status"),
+  limit: z.number().default(50).describe("Maximum number of orders to return"),
+});
+
+const SearchOrdersSchema = z.object({
+  query: z.string().describe("Search query for products in orders"),
+  scope: z.enum(['all', 'upcoming', 'history']).default('all').describe("Scope to search: all orders, upcoming only, or history only"),
+});
+
+const BulkAddToCartSchema = z.object({
+  items: z.array(z.object({
+    productId: z.string().describe("Product ID"),
+    count: z.number().default(1).describe("Quantity to add"),
+  })).describe("List of items to add to cart"),
+});
+
 // Helper function to convert Zod schema to JSON schema
 function zodToToolInput(schema: z.ZodType<any>): any {
   return zodToJsonSchema(schema) as any;
@@ -150,6 +167,21 @@ const tools: Tool[] = [
     name: "get_categories",
     description: "Get product categories and subcategories",
     inputSchema: zodToToolInput(GetCategoriesSchema),
+  },
+  {
+    name: "get_order_history",
+    description: "Get order history with optional filtering. Returns completed orders by default.",
+    inputSchema: zodToToolInput(GetOrderHistorySchema),
+  },
+  {
+    name: "search_orders",
+    description: "Search for products within past and upcoming orders. Useful for checking if an item is already ordered.",
+    inputSchema: zodToToolInput(SearchOrdersSchema),
+  },
+  {
+    name: "bulk_add_to_cart",
+    description: "Add multiple products to cart at once. Useful for adding recipe ingredients or recurring items.",
+    inputSchema: zodToToolInput(BulkAddToCartSchema),
   },
 ];
 
@@ -310,6 +342,112 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
+      case "get_order_history": {
+        const { filter, limit } = GetOrderHistorySchema.parse(args);
+        // Get deliveries with filter - COMPLETED for past orders, CURRENT for upcoming
+        const deliveries = await picnicClient.getDeliveries(true, filter === 'ALL' ? undefined : [filter]);
+        const limitedDeliveries = deliveries?.slice(0, limit) || [];
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                total: deliveries?.length || 0,
+                returned: limitedDeliveries.length,
+                filter,
+                orders: limitedDeliveries
+              }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "search_orders": {
+        const { query, scope } = SearchOrdersSchema.parse(args);
+        const searchLower = query.toLowerCase();
+
+        // Get orders based on scope
+        let orders: any[] = [];
+        if (scope === 'all' || scope === 'upcoming') {
+          const current = await picnicClient.getDeliveries(false, ['CURRENT']);
+          orders = orders.concat(current || []);
+        }
+        if (scope === 'all' || scope === 'history') {
+          const completed = await picnicClient.getDeliveries(true, ['COMPLETED']);
+          orders = orders.concat(completed || []);
+        }
+
+        // Search within orders for matching products
+        const matches: any[] = [];
+        for (const order of orders) {
+          const orderItems = order.items || order.orders?.[0]?.items || [];
+          for (const item of orderItems) {
+            const name = item.name || item.product_name || '';
+            if (name.toLowerCase().includes(searchLower)) {
+              matches.push({
+                order_id: order.id,
+                delivery_date: order.delivery_time || order.slot?.window_start,
+                status: order.status,
+                product: {
+                  id: item.id || item.product_id,
+                  name: name,
+                  quantity: item.quantity || item.count || 1,
+                  price: item.price
+                }
+              });
+            }
+          }
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                query,
+                scope,
+                total_matches: matches.length,
+                matches
+              }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "bulk_add_to_cart": {
+        const { items } = BulkAddToCartSchema.parse(args);
+        const results: any[] = [];
+
+        for (const item of items) {
+          try {
+            await picnicClient.addProductToShoppingCart(item.productId, item.count);
+            results.push({ productId: item.productId, count: item.count, success: true });
+          } catch (error) {
+            results.push({
+              productId: item.productId,
+              count: item.count,
+              success: false,
+              error: error instanceof Error ? error.message : String(error)
+            });
+          }
+        }
+
+        const cart = await picnicClient.getShoppingCart();
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                added: results.filter(r => r.success).length,
+                failed: results.filter(r => !r.success).length,
+                results,
+                cart
+              }, null, 2),
+            },
+          ],
+        };
+      }
+
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -349,7 +487,7 @@ async function main() {
 
         if (req.method === "GET" && req.url === "/health") {
           res.writeHead(200);
-          res.end(JSON.stringify({ status: "ok", version: "1.0.10" }));
+          res.end(JSON.stringify({ status: "ok", version: "1.1.0" }));
           return;
         }
 
@@ -468,6 +606,106 @@ async function main() {
                   const categories = await picnicClient.getCategories();
                   response = {
                     content: [{ type: "text", text: JSON.stringify(categories, null, 2) }],
+                  };
+                  break;
+                }
+
+                case "get_order_history": {
+                  const { filter, limit } = GetOrderHistorySchema.parse(args);
+                  const deliveries = await picnicClient.getDeliveries(true, filter === 'ALL' ? undefined : [filter]);
+                  const limitedDeliveries = deliveries?.slice(0, limit) || [];
+                  response = {
+                    content: [{
+                      type: "text",
+                      text: JSON.stringify({
+                        total: deliveries?.length || 0,
+                        returned: limitedDeliveries.length,
+                        filter,
+                        orders: limitedDeliveries
+                      }, null, 2)
+                    }],
+                  };
+                  break;
+                }
+
+                case "search_orders": {
+                  const { query, scope } = SearchOrdersSchema.parse(args);
+                  const searchLower = query.toLowerCase();
+
+                  let orders: any[] = [];
+                  if (scope === 'all' || scope === 'upcoming') {
+                    const current = await picnicClient.getDeliveries(false, ['CURRENT']);
+                    orders = orders.concat(current || []);
+                  }
+                  if (scope === 'all' || scope === 'history') {
+                    const completed = await picnicClient.getDeliveries(true, ['COMPLETED']);
+                    orders = orders.concat(completed || []);
+                  }
+
+                  const matches: any[] = [];
+                  for (const order of orders) {
+                    const orderItems = order.items || order.orders?.[0]?.items || [];
+                    for (const item of orderItems) {
+                      const name = item.name || item.product_name || '';
+                      if (name.toLowerCase().includes(searchLower)) {
+                        matches.push({
+                          order_id: order.id,
+                          delivery_date: order.delivery_time || order.slot?.window_start,
+                          status: order.status,
+                          product: {
+                            id: item.id || item.product_id,
+                            name: name,
+                            quantity: item.quantity || item.count || 1,
+                            price: item.price
+                          }
+                        });
+                      }
+                    }
+                  }
+
+                  response = {
+                    content: [{
+                      type: "text",
+                      text: JSON.stringify({
+                        query,
+                        scope,
+                        total_matches: matches.length,
+                        matches
+                      }, null, 2)
+                    }],
+                  };
+                  break;
+                }
+
+                case "bulk_add_to_cart": {
+                  const { items } = BulkAddToCartSchema.parse(args);
+                  const results: any[] = [];
+
+                  for (const item of items) {
+                    try {
+                      await picnicClient.addProductToShoppingCart(item.productId, item.count);
+                      results.push({ productId: item.productId, count: item.count, success: true });
+                    } catch (error) {
+                      results.push({
+                        productId: item.productId,
+                        count: item.count,
+                        success: false,
+                        error: error instanceof Error ? error.message : String(error)
+                      });
+                    }
+                  }
+
+                  const cart = await picnicClient.getShoppingCart();
+                  response = {
+                    content: [{
+                      type: "text",
+                      text: JSON.stringify({
+                        added: results.filter(r => r.success).length,
+                        failed: results.filter(r => !r.success).length,
+                        results,
+                        cart
+                      }, null, 2)
+                    }],
                   };
                   break;
                 }
