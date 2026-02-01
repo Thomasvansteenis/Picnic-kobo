@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Package, Search, Clock, Check, X } from 'lucide-react'
-import { Input, Card, CardContent, Badge, Button, OrderCardSkeleton } from '@/components/ui'
+import { Input, Card, CardContent, Badge, OrderCardSkeleton } from '@/components/ui'
 import { getUpcomingOrders, getOrderHistory, searchOrders } from '@/services/orders'
 import { cn } from '@/utils/cn'
 
@@ -22,7 +22,7 @@ export function OrdersPage() {
     queryFn: () => getOrderHistory(20),
   })
 
-  const { data: searchData, isLoading: searchLoading } = useQuery({
+  const { data: searchData } = useQuery({
     queryKey: ['orderSearch', searchQuery],
     queryFn: () => searchOrders(searchQuery, activeTab === 'upcoming' ? 'upcoming' : 'history'),
     enabled: searchQuery.length > 1,

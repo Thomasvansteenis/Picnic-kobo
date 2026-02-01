@@ -12,10 +12,10 @@ import { SettingsPage } from './pages/SettingsPage'
 import { useSettingsStore } from './stores/settingsStore'
 
 function App() {
-  const { uiMode } = useSettingsStore()
+  const { ui_mode } = useSettingsStore()
 
   // If e-reader mode, redirect to legacy Flask templates
-  if (uiMode === 'ereader') {
+  if (ui_mode === 'ereader') {
     window.location.href = '/legacy'
     return null
   }
