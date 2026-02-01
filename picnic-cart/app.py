@@ -2,9 +2,16 @@ import os
 import traceback
 import requests
 import json
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_from_directory, make_response
 from dotenv import load_dotenv
 from functools import wraps
+
+# Import auth service for PIN-based authentication
+try:
+    from services.auth import get_auth_service
+    HAS_AUTH_SERVICE = True
+except ImportError:
+    HAS_AUTH_SERVICE = False
 
 load_dotenv()
 
@@ -74,8 +81,8 @@ def login_required(f):
     """Decorator to require login for legacy routes"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if 'picnic_username' not in session:
-            return redirect(url_for('login'))
+        if not session.get('logged_in'):
+            return redirect(url_for('pin_login'))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -91,18 +98,18 @@ def index():
 
     if ui_mode == 'ereader':
         # Redirect to legacy e-reader interface
-        if 'picnic_username' in session:
+        if session.get('logged_in'):
             return redirect(url_for('legacy_cart'))
-        return redirect(url_for('login'))
+        return redirect(url_for('pin_login'))
 
     # Serve React app
     if os.path.exists(os.path.join(STATIC_DIR, 'index.html')):
         return send_from_directory(STATIC_DIR, 'index.html')
 
     # Fallback to legacy if React not built
-    if 'picnic_username' in session:
+    if session.get('logged_in'):
         return redirect(url_for('legacy_cart'))
-    return redirect(url_for('login'))
+    return redirect(url_for('pin_login'))
 
 
 @app.route('/app')
@@ -127,48 +134,16 @@ def serve_assets(path):
 @app.route('/legacy')
 def legacy_index():
     """Legacy home page"""
-    if 'picnic_username' in session:
+    if session.get('logged_in'):
         return redirect(url_for('legacy_cart'))
-    return redirect(url_for('login'))
+    return redirect(url_for('pin_login'))
 
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    """Login page - Note: Authentication is handled by MCP server"""
-    if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
-        country = request.form.get('country', 'NL')
-
-        if not username or not password:
-            flash('Username and password are required', 'error')
-            return render_template('login.html')
-
-        try:
-            # Check if MCP server is accessible
-            print(f"Testing connection to MCP server at {MCP_SERVER_URL}")
-            health_response = requests.get(f"{MCP_SERVER_URL}/health", timeout=5)
-            health_response.raise_for_status()
-            print("MCP server is accessible")
-
-            # Store in session (MCP server handles actual authentication)
-            session['logged_in'] = True
-            session['picnic_username'] = username
-            session['picnic_country'] = country
-            print(f"Session created for user: {username} in country: {country}")
-
-            flash('Login successful!', 'success')
-            return redirect(url_for('legacy_cart'))
-        except requests.RequestException as e:
-            print(f'MCP server connection failed: {str(e)}')
-            print(traceback.format_exc())
-            flash(f'Cannot connect to Picnic service. Please ensure the MCP server is running: {str(e)}', 'error')
-        except Exception as e:
-            print(f'Login failed: {str(e)}')
-            print(traceback.format_exc())
-            flash(f'Login failed: {str(e)}', 'error')
-
-    return render_template('login.html')
+    """Login page - redirects to PIN login for ereader mode"""
+    # Redirect to PIN login (the new standard for ereader mode)
+    return redirect(url_for('pin_login'))
 
 
 @app.route('/logout')
@@ -176,7 +151,69 @@ def logout():
     """Logout and clear session"""
     session.clear()
     flash('Logged out successfully', 'success')
-    return redirect(url_for('login'))
+    # Check which mode to return to
+    ui_mode = request.cookies.get('ui_mode', 'full')
+    if ui_mode == 'ereader':
+        return redirect(url_for('pin_login'))
+    return redirect(url_for('index'))
+
+
+@app.route('/switch-to-full', methods=['GET', 'POST'])
+def switch_to_full_mode():
+    """Switch from ereader mode to full mode"""
+    response = make_response(redirect(url_for('index')))
+    response.set_cookie('ui_mode', 'full', max_age=31536000)  # 1 year
+    session.clear()  # Clear ereader session to require fresh login
+    return response
+
+
+@app.route('/pin-login', methods=['GET', 'POST'])
+def pin_login():
+    """PIN-based login for e-reader mode (uses same PIN as full mode)"""
+    if request.method == 'POST':
+        pin = request.form.get('pin', '')
+
+        if not pin or not pin.isdigit() or len(pin) != 4:
+            flash('Please enter a valid 4-digit PIN', 'error')
+            return render_template('pin_login.html')
+
+        if not HAS_AUTH_SERVICE:
+            flash('Authentication service not available', 'error')
+            return render_template('pin_login.html')
+
+        try:
+            # Get Picnic user ID from MCP server (same as full mode)
+            try:
+                from services.mcp_client import get_mcp_client
+                mcp = get_mcp_client()
+                user_data = mcp.get_user()
+                picnic_user_id = user_data.get('user_id') or user_data.get('id') or 'default'
+            except Exception:
+                picnic_user_id = 'default-user'
+
+            # Verify PIN using the same auth service as full mode
+            auth_service = get_auth_service()
+            result = auth_service.verify_pin(picnic_user_id, pin)
+
+            if result.get('valid'):
+                # Set session for ereader mode
+                session['logged_in'] = True
+                session['picnic_username'] = result['user'].get('display_name') or picnic_user_id
+                session['picnic_user_id'] = picnic_user_id
+
+                flash('Login successful!', 'success')
+                return redirect(url_for('legacy_cart'))
+            else:
+                flash('Invalid PIN', 'error')
+
+        except ValueError as e:
+            flash(str(e), 'error')
+        except Exception as e:
+            print(f'PIN login failed: {str(e)}')
+            print(traceback.format_exc())
+            flash(f'Login failed: {str(e)}', 'error')
+
+    return render_template('pin_login.html')
 
 
 @app.route('/legacy/cart')

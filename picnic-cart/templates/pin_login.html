@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}PIN Login - Picnic Cart{% endblock %}
+
+{% block content %}
+<h1>Picnic Cart</h1>
+
+<div style="margin-top: 20px; padding: 15px; border: 2px solid #000;">
+    <h2>Enter your PIN</h2>
+    <p style="margin-bottom: 15px;">Enter your 4-digit PIN to access your cart.</p>
+
+    <form method="POST" action="{{ url_for('pin_login') }}">
+        <div style="margin-bottom: 15px;">
+            <label for="pin">PIN:</label>
+            <input type="password"
+                   id="pin"
+                   name="pin"
+                   pattern="[0-9]{4}"
+                   maxlength="4"
+                   inputmode="numeric"
+                   required
+                   autofocus
+                   style="font-size: 24px; text-align: center; letter-spacing: 10px; width: 150px;">
+        </div>
+
+        <input type="submit" value="Login">
+    </form>
+</div>
+
+<div style="margin-top: 20px; padding: 15px; border: 1px solid #000;">
+    <h2>First time?</h2>
+    <p>Set up your PIN in the full version first, then come back here to use the e-reader interface.</p>
+    <form method="POST" action="{{ url_for('switch_to_full_mode') }}" style="margin-top: 10px;">
+        <input type="submit" value="Go to Full Version">
+    </form>
+</div>
+
+<div style="margin-top: 20px; padding: 15px; border: 1px solid #000;">
+    <h2>About</h2>
+    <p>This is a simple web interface for managing your Picnic grocery cart, optimized for e-ink displays like Kobo e-readers.</p>
+</div>
+{% endblock %}
