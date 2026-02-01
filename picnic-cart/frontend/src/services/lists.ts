@@ -1,5 +1,5 @@
 import api from './api'
-import type { RecurringList, RecurringListItem } from '../types'
+import type { RecurringList } from '../types'
 
 interface ListsResponse {
   lists: RecurringList[]

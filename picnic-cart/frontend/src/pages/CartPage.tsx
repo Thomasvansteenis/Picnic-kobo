@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion'
+import { Link } from 'react-router-dom'
 import { ShoppingCart, Minus, Plus, Trash2, Package } from 'lucide-react'
 import { useCartStore } from '@/stores/cartStore'
 import { useUIStore } from '@/stores/uiStore'
@@ -50,9 +51,12 @@ export function CartPage() {
         <p className="text-gray-500 mb-6">
           Voeg producten toe om te beginnen
         </p>
-        <Button variant="primary" as="a" href="/search">
+        <Link
+          to="/search"
+          className="inline-flex items-center justify-center gap-2 rounded-lg font-medium h-10 px-4 text-sm bg-primary-500 text-white hover:bg-primary-600"
+        >
           Producten zoeken
-        </Button>
+        </Link>
       </div>
     )
   }

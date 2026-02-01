@@ -6,7 +6,6 @@ import { Card, CardContent, Button, Badge, Modal } from '@/components/ui'
 import { getRecurringLists, addListToCart, deleteRecurringList, getSuggestedLists } from '@/services/lists'
 import { useUIStore } from '@/stores/uiStore'
 import { useCartStore } from '@/stores/cartStore'
-import type { RecurringList } from '@/types'
 
 export function ListsPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)

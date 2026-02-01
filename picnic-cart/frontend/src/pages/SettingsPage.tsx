@@ -1,7 +1,5 @@
-import { useState } from 'react'
 import { motion } from 'framer-motion'
 import {
-  Settings,
   Monitor,
   Smartphone,
   Moon,
@@ -13,7 +11,7 @@ import {
   LogOut,
   ChevronRight,
 } from 'lucide-react'
-import { Card, CardContent, Button, Badge } from '@/components/ui'
+import { Card, CardContent, Badge } from '@/components/ui'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/utils/cn'

@@ -72,14 +72,13 @@ export function CartDrawer() {
                   <p className="text-gray-500 mb-6">
                     Voeg producten toe om te beginnen
                   </p>
-                  <Button
-                    variant="primary"
-                    onClick={() => setCartDrawerOpen(false)}
-                    as={Link}
+                  <Link
                     to="/search"
+                    onClick={() => setCartDrawerOpen(false)}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg font-medium h-10 px-4 text-sm bg-primary-500 text-white hover:bg-primary-600"
                   >
                     Producten zoeken
-                  </Button>
+                  </Link>
                 </div>
               ) : (
                 <ul className="divide-y divide-gray-100">

@@ -9,7 +9,7 @@ interface SettingsStore extends Settings {
 
 export const useSettingsStore = create<SettingsStore>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       ui_mode: 'full',
       theme: 'light',
       language: 'nl',
