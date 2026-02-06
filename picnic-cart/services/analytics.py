@@ -22,66 +22,117 @@ class AnalyticsService:
         """Sync order history from Picnic API to local cache."""
         try:
             # Get completed orders from Picnic
-            result = self.mcp_client.get_order_history(filter='COMPLETED', limit=100)
+            # Try both COMPLETED and ALL filters as API might not filter properly
+            result = self.mcp_client.get_order_history(filter='ALL', limit=100)
+
+            logger.info(f"Order history response: total={result.get('total', 'N/A')}, returned={result.get('returned', 'N/A')}")
 
             if not result or 'orders' not in result:
-                return {'synced': 0, 'error': 'No orders returned from API'}
+                # Check if orders are returned at top level (different API response format)
+                if isinstance(result, list):
+                    orders = result
+                else:
+                    return {'synced': 0, 'error': 'No orders returned from API'}
+            else:
+                orders = result.get('orders', [])
 
-            orders = result.get('orders', [])
             synced = 0
             items_synced = 0
 
             for order in orders:
-                order_id = order.get('id')
+                order_id = order.get('id') or order.get('delivery_id')
                 if not order_id:
+                    logger.warning(f"Order without ID: {order.keys() if isinstance(order, dict) else type(order)}")
                     continue
 
                 # Cache the order
                 self.db.cache_order(user_id, order)
                 synced += 1
 
+                # Extract delivery time from multiple possible fields
+                delivery_time = (
+                    order.get('delivery_time') or
+                    order.get('slot', {}).get('window_start') or
+                    order.get('window_start') or
+                    order.get('eta', {}).get('start') or
+                    order.get('delivery_date')
+                )
+
                 # Extract and cache items
                 items = self._extract_order_items(order)
                 for item in items:
-                    self._cache_order_item(user_id, order_id, item, order.get('delivery_time'))
+                    self._cache_order_item(user_id, order_id, item, delivery_time)
                     items_synced += 1
 
+            logger.info(f"Synced {synced} orders with {items_synced} items")
             return {
                 'synced': synced,
                 'items_synced': items_synced,
-                'total_available': result.get('total', synced)
+                'total_available': result.get('total', synced) if isinstance(result, dict) else len(orders)
             }
 
         except Exception as e:
-            logger.error(f"Failed to sync orders: {e}")
+            logger.error(f"Failed to sync orders: {e}", exc_info=True)
             return {'synced': 0, 'error': str(e)}
 
     def _extract_order_items(self, order: Dict) -> List[Dict]:
         """Extract items from order data."""
         items = []
 
-        # Handle different order structures
+        # Handle different order structures from Picnic API
         order_items = order.get('items', [])
 
-        # Some orders have nested structure
+        # Some orders have nested structure under 'orders' key
         if not order_items and 'orders' in order:
-            for sub_order in order['orders']:
+            for sub_order in order.get('orders', []):
                 order_items.extend(sub_order.get('items', []))
 
+        # Try 'products' key as alternative
+        if not order_items:
+            order_items = order.get('products', [])
+
+        # Try 'articles' key as alternative
+        if not order_items:
+            order_items = order.get('articles', [])
+
         for item in order_items:
+            if not isinstance(item, dict):
+                continue
+
             # Handle nested ORDER_LINE/ORDER_ARTICLE structure
             article = item
-            if 'ORDER_LINE' in item.get('type', ''):
-                article = item.get('items', [{}])[0] if item.get('items') else item
+            item_type = item.get('type', '')
+            if isinstance(item_type, str) and 'ORDER_LINE' in item_type:
+                nested_items = item.get('items', [])
+                if nested_items and isinstance(nested_items, list) and len(nested_items) > 0:
+                    article = nested_items[0]
 
-            items.append({
-                'id': article.get('id') or article.get('product_id'),
-                'name': article.get('name') or article.get('product_name', ''),
-                'quantity': article.get('quantity') or article.get('count', 1),
-                'price': article.get('price'),
-                'unit_quantity': article.get('unit_quantity'),
-                'image_url': article.get('image_url')
-            })
+            # Extract product info with fallbacks for different API response formats
+            product_id = (
+                article.get('id') or
+                article.get('product_id') or
+                article.get('article_id')
+            )
+            product_name = (
+                article.get('name') or
+                article.get('product_name') or
+                article.get('article_name', '')
+            )
+            quantity = (
+                article.get('quantity') or
+                article.get('count') or
+                article.get('amount', 1)
+            )
+
+            if product_id or product_name:  # Only add if we have at least some info
+                items.append({
+                    'id': product_id,
+                    'name': product_name,
+                    'quantity': quantity,
+                    'price': article.get('price') or article.get('unit_price'),
+                    'unit_quantity': article.get('unit_quantity'),
+                    'image_url': article.get('image_url') or article.get('image')
+                })
 
         return items
 
@@ -109,12 +160,11 @@ class AnalyticsService:
                     return
 
                 cursor.execute(
-                    """INSERT INTO order_items
+                    """INSERT IGNORE INTO order_items
                        (order_id, user_id, picnic_product_id, product_name,
                         quantity, unit_price, total_price, unit_quantity,
                         image_url, delivery_date)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                       ON CONFLICT DO NOTHING""",
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                     (
                         order_row['id'],
                         user_id,
@@ -139,6 +189,7 @@ class AnalyticsService:
 
             try:
                 # Get all order items grouped by product
+                # Use GROUP_CONCAT for MariaDB (instead of PostgreSQL's ARRAY_AGG)
                 cursor.execute(
                     """SELECT
                            picnic_product_id,
@@ -147,7 +198,7 @@ class AnalyticsService:
                            SUM(quantity) as total_quantity,
                            MIN(delivery_date) as first_purchased,
                            MAX(delivery_date) as last_purchased,
-                           ARRAY_AGG(delivery_date ORDER BY delivery_date) as purchase_dates
+                           GROUP_CONCAT(delivery_date ORDER BY delivery_date SEPARATOR ',') as purchase_dates_str
                        FROM order_items
                        WHERE user_id = %s AND delivery_date IS NOT NULL
                        GROUP BY picnic_product_id, product_name
@@ -158,7 +209,21 @@ class AnalyticsService:
 
                 calculated = 0
                 for product in products:
-                    dates = product.get('purchase_dates', [])
+                    # Parse GROUP_CONCAT result (comma-separated dates string)
+                    dates_str = product.get('purchase_dates_str', '')
+                    dates = []
+                    if dates_str:
+                        for date_part in dates_str.split(','):
+                            date_part = date_part.strip()
+                            if date_part:
+                                try:
+                                    # Try to parse as date string or datetime
+                                    if isinstance(date_part, str):
+                                        dates.append(datetime.fromisoformat(date_part.replace(' ', 'T').split('.')[0]))
+                                    else:
+                                        dates.append(date_part)
+                                except (ValueError, TypeError):
+                                    continue
 
                     if len(dates) >= 2:
                         # Calculate average days between purchases
@@ -190,7 +255,7 @@ class AnalyticsService:
                             else:
                                 suggested = 'occasional'
 
-                            # Update purchase_frequency table
+                            # Update purchase_frequency table (MariaDB syntax)
                             cursor.execute(
                                 """INSERT INTO purchase_frequency
                                    (user_id, picnic_product_id, product_name,
@@ -198,15 +263,14 @@ class AnalyticsService:
                                     last_purchased, avg_days_between, confidence_score,
                                     suggested_frequency, calculated_at)
                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
-                                   ON CONFLICT (user_id, picnic_product_id)
-                                   DO UPDATE SET
-                                       product_name = EXCLUDED.product_name,
-                                       total_purchases = EXCLUDED.total_purchases,
-                                       total_quantity = EXCLUDED.total_quantity,
-                                       last_purchased = EXCLUDED.last_purchased,
-                                       avg_days_between = EXCLUDED.avg_days_between,
-                                       confidence_score = EXCLUDED.confidence_score,
-                                       suggested_frequency = EXCLUDED.suggested_frequency,
+                                   ON DUPLICATE KEY UPDATE
+                                       product_name = VALUES(product_name),
+                                       total_purchases = VALUES(total_purchases),
+                                       total_quantity = VALUES(total_quantity),
+                                       last_purchased = VALUES(last_purchased),
+                                       avg_days_between = VALUES(avg_days_between),
+                                       confidence_score = VALUES(confidence_score),
+                                       suggested_frequency = VALUES(suggested_frequency),
                                        calculated_at = NOW()""",
                                 (
                                     user_id,
@@ -267,7 +331,7 @@ class AnalyticsService:
                        COUNT(*) as item_count
                    FROM order_items
                    WHERE user_id = %s
-                     AND delivery_date >= NOW() - INTERVAL '%s months'
+                     AND delivery_date >= DATE_SUB(NOW(), INTERVAL %s MONTH)
                    GROUP BY category
                    ORDER BY total_spent DESC""",
                 (user_id, months)

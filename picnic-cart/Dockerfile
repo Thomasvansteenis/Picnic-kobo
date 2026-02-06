@@ -4,7 +4,7 @@
 FROM node:20-alpine AS frontend-builder
 
 # Cache-busting argument - change this value to force rebuild
-ARG CACHEBUST=1
+ARG CACHEBUST=2
 
 WORKDIR /frontend
 

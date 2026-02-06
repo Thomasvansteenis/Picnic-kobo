@@ -1,6 +1,6 @@
 {
   "name": "picnic-mcp-server",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "Model Context Protocol server for Picnic grocery delivery service",
   "type": "module",
   "main": "./dist/index.js",
