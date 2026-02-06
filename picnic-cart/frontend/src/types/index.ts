@@ -95,11 +95,23 @@ export interface ParsedIngredient {
   search_term: string
 }
 
+export interface ProductMatchOption {
+  id: string
+  name: string
+  price?: number
+  image_url?: string
+  unit_quantity?: string
+  confidence: number
+}
+
 export interface ProductMatch {
   ingredient: ParsedIngredient
-  matches: Product[]
-  selected?: Product
-  status: 'matched' | 'partial' | 'not_found'
+  matches: ProductMatchOption[]
+  selected?: ProductMatchOption
+  status: 'matched' | 'partial' | 'uncertain' | 'not_found'
+  best_confidence: number
+  needs_review: boolean
+  suggested_quantity: number
 }
 
 export interface Recipe {
