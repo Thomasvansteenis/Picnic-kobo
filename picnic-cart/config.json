@@ -1,6 +1,6 @@
 {
   "name": "Picnic Shopping Cart",
-  "version": "4.0.4",
+  "version": "4.0.5",
   "slug": "picnic-cart",
   "description": "Full-featured Picnic grocery shopping webapp with order analytics, recipe parsing, and recurring lists. Includes e-reader optimized mode for Kobo devices. Uses Home Assistant MariaDB addon for persistence.",
   "arch": ["armhf", "armv7", "aarch64", "amd64", "i386"],
