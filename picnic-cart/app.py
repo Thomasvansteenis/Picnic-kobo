@@ -15,7 +15,7 @@ except ImportError:
 
 load_dotenv()
 
-__version__ = "4.0.0"
+__version__ = "4.0.3"
 
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-key-change-in-production')
