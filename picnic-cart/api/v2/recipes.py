@@ -220,60 +220,153 @@ def parse_text():
 @recipes_bp.route('/match-products', methods=['POST'])
 @require_auth
 def match_products():
-    """Match parsed ingredients to Picnic products."""
+    """Match parsed ingredients to Picnic products with improved matching algorithm."""
     data = request.get_json()
     ingredients = data.get('ingredients', [])
 
     if not ingredients:
-        return jsonify({'matches': [], 'not_found': []})
+        return jsonify({'matches': [], 'not_found': [], 'needs_review_count': 0})
 
-    mcp = get_mcp_client()
-    matches = []
-    not_found = []
+    # Use the improved RecipeParserService for matching
+    try:
+        from services.recipe_parser import get_recipe_parser
+        parser = get_recipe_parser()
 
-    for ingredient in ingredients:
-        search_term = ingredient.get('search_term') or ingredient.get('ingredient', '')
+        # Transform ingredients to the format expected by the parser
+        parsed_ingredients = []
+        for ing in ingredients:
+            parsed_ingredients.append({
+                'name': ing.get('ingredient') or ing.get('search_term') or ing.get('original_text', ''),
+                'quantity': ing.get('quantity'),
+                'unit': ing.get('unit'),
+                'original_text': ing.get('original_text', '')
+            })
 
-        try:
-            results = mcp.search_products(search_term)
+        # Get matches with improved algorithm
+        result = parser.match_products(parsed_ingredients)
 
-            if isinstance(results, dict):
-                products = results.get('products', results.get('items', []))
-            elif isinstance(results, list):
-                products = results
-            else:
-                products = []
+        # Transform response to match frontend expectations
+        transformed_matches = []
+        for match in result.get('matches', []):
+            # Find the original ingredient data
+            original_ingredient = None
+            for ing in ingredients:
+                ing_name = ing.get('ingredient') or ing.get('search_term') or ing.get('original_text', '')
+                if ing_name == match['ingredient'].get('name'):
+                    original_ingredient = ing
+                    break
 
-            if products:
-                matches.append({
-                    'ingredient': ingredient,
-                    'matches': products[:5],
-                    'selected': products[0],
-                    'status': 'matched'
-                })
-            else:
+            if not original_ingredient:
+                original_ingredient = {
+                    'original_text': match['ingredient'].get('original_text', match['ingredient'].get('name', '')),
+                    'ingredient': match['ingredient'].get('name', ''),
+                    'name': match['ingredient'].get('name', '')
+                }
+
+            transformed_matches.append({
+                'ingredient': original_ingredient,
+                'matches': match.get('matches', []),
+                'status': match.get('status', 'matched'),
+                'best_confidence': match.get('best_confidence', 0),
+                'needs_review': match.get('needs_review', False),
+                'suggested_quantity': match.get('suggested_quantity', 1)
+            })
+
+        # Add not_found items with proper structure
+        for ing in result.get('not_found', []):
+            original_ingredient = None
+            for orig in ingredients:
+                orig_name = orig.get('ingredient') or orig.get('search_term') or orig.get('original_text', '')
+                if orig_name == ing.get('name'):
+                    original_ingredient = orig
+                    break
+
+            if not original_ingredient:
+                original_ingredient = {
+                    'original_text': ing.get('original_text', ing.get('name', '')),
+                    'ingredient': ing.get('name', ''),
+                    'name': ing.get('name', '')
+                }
+
+            transformed_matches.append({
+                'ingredient': original_ingredient,
+                'matches': [],
+                'status': 'not_found',
+                'best_confidence': 0,
+                'needs_review': False,
+                'suggested_quantity': 1
+            })
+
+        return jsonify({
+            'matches': transformed_matches,
+            'not_found': result.get('not_found', []),
+            'needs_review_count': result.get('needs_review_count', 0),
+            'high_confidence_count': result.get('high_confidence_count', 0),
+            'total_ingredients': result.get('total_ingredients', len(ingredients)),
+            'matched_count': result.get('matched_count', 0)
+        })
+
+    except ImportError:
+        # Fallback to simple matching if parser not available
+        logger.warning("RecipeParserService not available, using simple matching")
+        mcp = get_mcp_client()
+        matches = []
+        not_found = []
+
+        for ingredient in ingredients:
+            search_term = ingredient.get('search_term') or ingredient.get('ingredient', '')
+
+            try:
+                results = mcp.search_products(search_term)
+
+                if isinstance(results, dict):
+                    products = results.get('products', results.get('items', []))
+                elif isinstance(results, list):
+                    products = results
+                else:
+                    products = []
+
+                if products:
+                    # Add confidence scores for fallback
+                    scored_products = [
+                        {**p, 'confidence': 0.5} for p in products[:5]
+                    ]
+                    matches.append({
+                        'ingredient': ingredient,
+                        'matches': scored_products,
+                        'status': 'matched',
+                        'best_confidence': 0.5,
+                        'needs_review': True,
+                        'suggested_quantity': 1
+                    })
+                else:
+                    matches.append({
+                        'ingredient': ingredient,
+                        'matches': [],
+                        'status': 'not_found',
+                        'best_confidence': 0,
+                        'needs_review': False,
+                        'suggested_quantity': 1
+                    })
+                    not_found.append(ingredient)
+
+            except Exception as e:
+                logger.error(f"Error searching for {search_term}: {e}")
                 matches.append({
                     'ingredient': ingredient,
                     'matches': [],
-                    'selected': None,
-                    'status': 'not_found'
+                    'status': 'not_found',
+                    'best_confidence': 0,
+                    'needs_review': False,
+                    'suggested_quantity': 1
                 })
                 not_found.append(ingredient)
 
-        except Exception as e:
-            logger.error(f"Error searching for {search_term}: {e}")
-            matches.append({
-                'ingredient': ingredient,
-                'matches': [],
-                'selected': None,
-                'status': 'not_found'
-            })
-            not_found.append(ingredient)
-
-    return jsonify({
-        'matches': matches,
-        'not_found': not_found
-    })
+        return jsonify({
+            'matches': matches,
+            'not_found': not_found,
+            'needs_review_count': len([m for m in matches if m.get('needs_review')])
+        })
 
 
 @recipes_bp.route('/add-to-cart', methods=['POST'])

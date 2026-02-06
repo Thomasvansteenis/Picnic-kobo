@@ -4,7 +4,7 @@ import os
 import re
 import logging
 import json
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
 
 import requests
@@ -17,6 +17,51 @@ logger = logging.getLogger(__name__)
 # Home Assistant API configuration
 HA_URL = os.getenv('HA_URL', 'http://supervisor/core')
 HA_TOKEN = os.getenv('SUPERVISOR_TOKEN', '')
+
+# Confidence thresholds
+CONFIDENCE_HIGH = 0.7  # Auto-select
+CONFIDENCE_MEDIUM = 0.4  # Show for review
+CONFIDENCE_LOW = 0.2  # Uncertain, needs user verification
+
+# Common ingredient synonyms and search term mappings (Dutch)
+INGREDIENT_SYNONYMS = {
+    'ei': ['eieren', 'ei'],
+    'eieren': ['eieren', 'ei'],
+    'bloem': ['bloem', 'tarwebloem', 'patentbloem'],
+    'suiker': ['suiker', 'kristalsuiker', 'witte suiker'],
+    'boter': ['boter', 'roomboter'],
+    'melk': ['melk', 'volle melk'],
+    'olie': ['olie', 'zonnebloemolie', 'olijfolie'],
+    'olijfolie': ['olijfolie', 'olie'],
+    'zout': ['zout', 'zeezout'],
+    'peper': ['peper', 'zwarte peper'],
+    'knoflook': ['knoflook', 'teentje knoflook'],
+    'ui': ['ui', 'uien'],
+    'uien': ['uien', 'ui'],
+    'paprika': ['paprika', 'rode paprika', 'gele paprika'],
+    'tomaat': ['tomaat', 'tomaten'],
+    'tomaten': ['tomaten', 'tomaat'],
+    'aardappel': ['aardappel', 'aardappelen', 'aardappels'],
+    'aardappelen': ['aardappelen', 'aardappel'],
+    'wortel': ['wortel', 'wortelen', 'wortels'],
+    'sla': ['sla', 'kropsla', 'ijsbergsla'],
+    'kaas': ['kaas', 'geraspte kaas'],
+    'room': ['room', 'slagroom', 'kookroom'],
+    'yoghurt': ['yoghurt', 'griekse yoghurt'],
+    'kip': ['kip', 'kipfilet', 'kippenfilet'],
+    'kipfilet': ['kipfilet', 'kip'],
+    'gehakt': ['gehakt', 'rundergehakt', 'half-om-half gehakt'],
+    'rijst': ['rijst', 'witte rijst', 'basmatirijst'],
+    'pasta': ['pasta', 'spaghetti', 'penne'],
+}
+
+# Words to remove from search terms (Dutch articles, prepositions)
+STOP_WORDS = {'de', 'het', 'een', 'van', 'met', 'voor', 'en', 'of', 'in', 'op', 'aan', 'te'}
+
+# Words that indicate preparation method (should be stripped)
+PREP_WORDS = {'gesneden', 'gehakt', 'fijngesneden', 'grof', 'fijn', 'vers', 'verse',
+              'gedroogd', 'gedroogde', 'gekookt', 'gekookte', 'gebakken', 'geraspt',
+              'geschild', 'gewassen', 'ontdooid', 'warm', 'koud', 'klein', 'grote', 'groot'}
 
 
 @dataclass
@@ -110,64 +155,94 @@ class RecipeParserService:
         ingredients: List[Dict],
         auto_add: bool = False
     ) -> Dict[str, Any]:
-        """Match parsed ingredients to Picnic products."""
+        """Match parsed ingredients to Picnic products with improved matching."""
         matches: List[Dict] = []
         not_found: List[Dict] = []
+        needs_review: List[int] = []  # Indices of matches needing user review
 
         for ingredient in ingredients:
             name = ingredient.get('name', '')
             if not name:
                 continue
 
-            # Search for the product
-            try:
-                search_results = self.mcp_client.search_products(name)
+            # Get normalized search terms
+            search_terms = self._get_search_terms(name)
+            all_results = []
 
-                if search_results and len(search_results) > 0:
-                    # Get the best match
-                    best_match = self._find_best_match(name, search_results)
+            # Search with multiple terms to get better coverage
+            for term in search_terms[:3]:  # Limit to 3 search attempts
+                try:
+                    results = self.mcp_client.search_products(term)
+                    if results:
+                        all_results.extend(results)
+                except Exception as e:
+                    logger.warning(f"Search failed for term '{term}': {e}")
 
-                    if best_match:
-                        match = {
-                            'ingredient': ingredient,
-                            'product': {
-                                'id': best_match.get('id'),
-                                'name': best_match.get('name'),
-                                'price': best_match.get('price'),
-                                'image_url': best_match.get('image_url'),
-                                'unit_quantity': best_match.get('unit_quantity')
-                            },
-                            'confidence': self._calculate_confidence(name, best_match.get('name', '')),
-                            'suggested_quantity': self._suggest_quantity(ingredient, best_match)
-                        }
-                        matches.append(match)
+            if all_results:
+                # Remove duplicates and score all results
+                scored_matches = self._score_all_matches(name, all_results)
+
+                if scored_matches:
+                    # Get top 5 matches with confidence scores
+                    top_matches = scored_matches[:5]
+                    best_match = top_matches[0]
+                    best_confidence = best_match[0]
+
+                    # Determine status based on confidence
+                    if best_confidence >= CONFIDENCE_HIGH:
+                        status = 'matched'
+                    elif best_confidence >= CONFIDENCE_MEDIUM:
+                        status = 'partial'
+                        needs_review.append(len(matches))
                     else:
-                        not_found.append(ingredient)
+                        status = 'uncertain'
+                        needs_review.append(len(matches))
+
+                    match = {
+                        'ingredient': ingredient,
+                        'matches': [
+                            {
+                                'id': m[1].get('id'),
+                                'name': m[1].get('name'),
+                                'price': m[1].get('price'),
+                                'image_url': m[1].get('image_url'),
+                                'unit_quantity': m[1].get('unit_quantity'),
+                                'confidence': round(m[0], 2)
+                            }
+                            for m in top_matches
+                        ],
+                        'status': status,
+                        'best_confidence': round(best_confidence, 2),
+                        'needs_review': best_confidence < CONFIDENCE_HIGH,
+                        'suggested_quantity': self._suggest_quantity(ingredient, best_match[1])
+                    }
+                    matches.append(match)
                 else:
                     not_found.append(ingredient)
-
-            except Exception as e:
-                logger.warning(f"Failed to search for ingredient '{name}': {e}")
+            else:
                 not_found.append(ingredient)
 
         result = {
             'matches': matches,
             'not_found': not_found,
+            'needs_review_indices': needs_review,
             'total_ingredients': len(ingredients),
             'matched_count': len(matches),
+            'high_confidence_count': sum(1 for m in matches if m['best_confidence'] >= CONFIDENCE_HIGH),
+            'needs_review_count': len(needs_review),
             'estimated_total': sum(
-                m['product']['price'] * m['suggested_quantity']
+                m['matches'][0]['price'] * m['suggested_quantity']
                 for m in matches
-                if m['product'].get('price')
+                if m['matches'] and m['matches'][0].get('price')
             )
         }
 
-        # Auto-add to cart if requested
+        # Auto-add to cart only for high-confidence matches if requested
         if auto_add and matches:
             items_to_add = [
-                {'productId': m['product']['id'], 'count': m['suggested_quantity']}
+                {'productId': m['matches'][0]['id'], 'count': m['suggested_quantity']}
                 for m in matches
-                if m['product'].get('id')
+                if m['matches'] and m['matches'][0].get('id') and m['best_confidence'] >= CONFIDENCE_HIGH
             ]
 
             if items_to_add:
@@ -179,6 +254,104 @@ class RecipeParserService:
                     result['cart_error'] = str(e)
 
         return result
+
+    def _get_search_terms(self, ingredient_name: str) -> List[str]:
+        """Generate multiple search terms for an ingredient."""
+        terms = []
+        name_lower = ingredient_name.lower().strip()
+
+        # Clean the name: remove stop words and prep words
+        words = name_lower.split()
+        clean_words = [w for w in words if w not in STOP_WORDS and w not in PREP_WORDS]
+        clean_name = ' '.join(clean_words) if clean_words else name_lower
+
+        # Add the cleaned name first
+        terms.append(clean_name)
+
+        # Add original if different
+        if name_lower != clean_name:
+            terms.append(name_lower)
+
+        # Check for synonyms
+        for word in clean_words:
+            if word in INGREDIENT_SYNONYMS:
+                for synonym in INGREDIENT_SYNONYMS[word]:
+                    if synonym not in terms:
+                        terms.append(synonym)
+
+        # Add individual important words if multi-word ingredient
+        if len(clean_words) > 1:
+            # Try the last word (often the main ingredient)
+            terms.append(clean_words[-1])
+            # Try first word if it's not a quantity descriptor
+            if clean_words[0] not in {'halve', 'kwart', 'grote', 'kleine'}:
+                terms.append(clean_words[0])
+
+        return terms
+
+    def _score_all_matches(self, ingredient_name: str, search_results: List[Dict]) -> List[Tuple[float, Dict]]:
+        """Score and rank all search results for an ingredient."""
+        ingredient_lower = ingredient_name.lower().strip()
+        ingredient_words = set(w for w in ingredient_lower.split() if w not in STOP_WORDS)
+
+        # Remove duplicates by product ID
+        seen_ids = set()
+        unique_results = []
+        for result in search_results:
+            pid = result.get('id')
+            if pid and pid not in seen_ids:
+                seen_ids.add(pid)
+                unique_results.append(result)
+
+        scored = []
+        for result in unique_results:
+            product_name = result.get('name', '').lower()
+            product_words = set(product_name.split())
+            score = 0.0
+
+            # Exact substring match (ingredient in product name)
+            if ingredient_lower in product_name:
+                score += 0.5
+
+            # Exact substring match (product key word in ingredient)
+            key_product_words = product_words - STOP_WORDS
+            for pw in key_product_words:
+                if pw in ingredient_lower and len(pw) > 2:
+                    score += 0.3
+                    break
+
+            # Word overlap scoring
+            overlap = ingredient_words & product_words
+            if overlap:
+                # More overlap = better match
+                overlap_ratio = len(overlap) / max(len(ingredient_words), 1)
+                score += overlap_ratio * 0.3
+
+            # Penalize very long product names (likely wrong product)
+            if len(product_name) > 60:
+                score -= 0.1
+
+            # Penalize if product name has many extra words
+            extra_words = len(product_words - ingredient_words)
+            if extra_words > 5:
+                score -= 0.1
+
+            # Boost if product name is short and contains key ingredient word
+            if len(product_name) < 30:
+                for iw in ingredient_words:
+                    if len(iw) > 3 and iw in product_name:
+                        score += 0.1
+                        break
+
+            # Cap score at 1.0
+            score = min(max(score, 0.0), 1.0)
+
+            scored.append((score, result))
+
+        # Sort by score descending
+        scored.sort(key=lambda x: x[0], reverse=True)
+
+        return scored
 
     def _extract_title(self, soup: BeautifulSoup, url: str) -> str:
         """Extract recipe title from the page."""
