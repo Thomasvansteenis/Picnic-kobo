@@ -101,21 +101,23 @@ def get_history():
         mcp = get_mcp_client()
         result = mcp.call_tool('get_order_history', {
             'filter': 'COMPLETED',
-            'limit': limit + offset
+            'limit': limit,
+            'offset': offset
         })
 
         deliveries = result.get('deliveries', []) if isinstance(result, dict) else result
         if not isinstance(deliveries, list):
             deliveries = []
 
-        # Apply offset
-        deliveries = deliveries[offset:offset + limit]
         orders = [transform_order(d) for d in deliveries]
+        
+        total_from_tool = result.get('total')
+        has_more = (offset + len(orders)) < total_from_tool if total_from_tool is not None else len(orders) == limit
 
         return jsonify({
             'orders': orders,
-            'total': len(orders),
-            'has_more': len(orders) == limit
+            'total': total_from_tool if total_from_tool is not None else len(orders),
+            'has_more': has_more
         })
 
     except Exception as e:

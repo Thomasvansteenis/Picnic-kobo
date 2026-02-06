@@ -1,773 +1,385 @@
-#!/usr/bin/env node
+/**
+ * This is the main server file for the Picnic MCP (Master Control Program).
+ * It acts as a bridge between the Home Assistant addon and the Picnic API,
+ * providing a simplified and authenticated interface for frontend components.
+ */
 
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-  Tool,
-} from "@modelcontextprotocol/sdk/types.js";
-import PicnicAPI from "picnic-api";
-import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
-import { createServer } from "http";
+import { MCP, registerTool } from './mcp';
+import { PicnicClient, Product } from './picnic-client';
+import { MemoryCache } from './cache';
+import { object, string, number, optional } from 'zod';
 
-// Debug: Log raw environment variables
-console.log("DEBUG: Raw environment variables:");
-console.log(`  PICNIC_USERNAME: ${process.env.PICNIC_USERNAME ? `"${process.env.PICNIC_USERNAME}"` : 'undefined'}`);
-console.log(`  PICNIC_PASSWORD: ${process.env.PICNIC_PASSWORD ? `[${process.env.PICNIC_PASSWORD.length} chars]` : 'undefined'}`);
-console.log(`  PICNIC_COUNTRY_CODE: ${process.env.PICNIC_COUNTRY_CODE || 'undefined'}`);
+// --- Types ---
 
-// Configuration from environment variables
-const config = {
-  username: process.env.PICNIC_USERNAME?.trim() || "",
-  password: process.env.PICNIC_PASSWORD?.trim() || "",
-  countryCode: process.env.PICNIC_COUNTRY_CODE || "NL",
-  httpPort: parseInt(process.env.HTTP_PORT || "3000"),
-  httpHost: process.env.HTTP_HOST || "0.0.0.0",
-  enableHttpServer: process.env.ENABLE_HTTP_SERVER === "true",
-};
+interface AuthData {
+  token: string;
+}
 
-console.log("Starting Picnic MCP Server...");
-console.log(`Username: ${config.username ? config.username : '(not configured)'}`);
-console.log(`Password: ${config.password ? '***configured***' : '(not configured)'}`);
-console.log(`Country: ${config.countryCode}`);
-console.log(`HTTP Server: ${config.enableHttpServer ? `Enabled on ${config.httpHost}:${config.httpPort}` : "Disabled"}`);
+// --- Main Server Class ---
 
-// Initialize Picnic API client
-let picnicClient: any = null;
+class PicnicMCP extends MCP {
+  private picnic: PicnicClient;
+  private cache = new MemoryCache();
 
-async function initializePicnicClient() {
-  // Validate credentials
-  if (!config.username || config.username.length === 0) {
-    const errorMsg = "PICNIC_USERNAME is not configured. Please set your Picnic email in the addon configuration.";
-    console.error(errorMsg);
-    throw new Error(errorMsg);
-  }
-
-  if (!config.password || config.password.length === 0) {
-    const errorMsg = "PICNIC_PASSWORD is not configured. Please set your Picnic password in the addon configuration.";
-    console.error(errorMsg);
-    throw new Error(errorMsg);
-  }
-
-  try {
-    console.log("Initializing Picnic API client...");
-    picnicClient = new PicnicAPI({
-      countryCode: config.countryCode as any,
+  constructor(options: any) {
+    super(options);
+    this.picnic = new PicnicClient({
+      countryCode: this.config.country_code || 'NL',
+      authKey: this.config.auth_key,
     });
+    console.log('Picnic MCP initialized');
+  }
 
-    console.log("Attempting to authenticate with Picnic...");
-    await picnicClient.login(config.username, config.password);
-    console.log("Successfully authenticated with Picnic API");
-    return picnicClient;
-  } catch (error) {
-    console.error("Failed to initialize Picnic client:", error);
-    if (error instanceof Error) {
-      if (error.message.includes("Invalid credentials") || error.message.includes("401")) {
-        console.error("Authentication failed. Please check your Picnic email and password in the addon configuration.");
-      }
+  protected async authenticate(authData: AuthData): Promise<any> {
+    if (authData.token) {
+      this.picnic.setAuthKey(authData.token);
     }
-    throw error;
+    const user = await this.picnic.getCurrentUser();
+    return user;
   }
-}
 
-// Define Zod schemas for tool parameters
-const SearchProductsSchema = z.object({
-  query: z.string().describe("Search query for products"),
-});
+  // --- Tool Registration ---
 
-const GetCartSchema = z.object({});
-
-const AddToCartSchema = z.object({
-  productId: z.string().describe("Product ID to add to cart"),
-  count: z.number().default(1).describe("Quantity to add"),
-});
-
-const RemoveFromCartSchema = z.object({
-  productId: z.string().describe("Product ID to remove from cart"),
-  count: z.number().default(1).describe("Quantity to remove"),
-});
-
-const ClearCartSchema = z.object({});
-
-const GetUserSchema = z.object({});
-
-const GetDeliveriesSchema = z.object({});
-
-const GetListsSchema = z.object({});
-
-const GetCategoriesSchema = z.object({});
-
-const GetOrderHistorySchema = z.object({
-  filter: z.enum(['COMPLETED', 'CURRENT', 'ALL']).default('COMPLETED').describe("Filter for order status"),
-  limit: z.number().default(50).describe("Maximum number of orders to return"),
-});
-
-const SearchOrdersSchema = z.object({
-  query: z.string().describe("Search query for products in orders"),
-  scope: z.enum(['all', 'upcoming', 'history']).default('all').describe("Scope to search: all orders, upcoming only, or history only"),
-});
-
-const BulkAddToCartSchema = z.object({
-  items: z.array(z.object({
-    productId: z.string().describe("Product ID"),
-    count: z.number().default(1).describe("Quantity to add"),
-  })).describe("List of items to add to cart"),
-});
-
-// Helper function to convert Zod schema to JSON schema
-function zodToToolInput(schema: z.ZodType<any>): any {
-  return zodToJsonSchema(schema) as any;
-}
-
-// Define available tools
-const tools: Tool[] = [
-  {
-    name: "search_products",
-    description: "Search for products in the Picnic catalog using a search query",
-    inputSchema: zodToToolInput(SearchProductsSchema),
-  },
-  {
-    name: "get_cart",
-    description: "Get the current shopping cart contents with all items and total price",
-    inputSchema: zodToToolInput(GetCartSchema),
-  },
-  {
-    name: "add_to_cart",
-    description: "Add a product to the shopping cart by product ID and quantity",
-    inputSchema: zodToToolInput(AddToCartSchema),
-  },
-  {
-    name: "remove_from_cart",
-    description: "Remove a product from the shopping cart by product ID and quantity",
-    inputSchema: zodToToolInput(RemoveFromCartSchema),
-  },
-  {
-    name: "clear_cart",
-    description: "Remove all items from the shopping cart",
-    inputSchema: zodToToolInput(ClearCartSchema),
-  },
-  {
-    name: "get_user",
-    description: "Get user account information including name, email, and address",
-    inputSchema: zodToToolInput(GetUserSchema),
-  },
-  {
-    name: "get_deliveries",
-    description: "Get delivery slots and scheduled deliveries",
-    inputSchema: zodToToolInput(GetDeliveriesSchema),
-  },
-  {
-    name: "get_lists",
-    description: "Get user's shopping lists",
-    inputSchema: zodToToolInput(GetListsSchema),
-  },
-  {
-    name: "get_categories",
-    description: "Get product categories and subcategories",
-    inputSchema: zodToToolInput(GetCategoriesSchema),
-  },
-  {
-    name: "get_order_history",
-    description: "Get order history with optional filtering. Returns completed orders by default.",
-    inputSchema: zodToToolInput(GetOrderHistorySchema),
-  },
-  {
-    name: "search_orders",
-    description: "Search for products within past and upcoming orders. Useful for checking if an item is already ordered.",
-    inputSchema: zodToToolInput(SearchOrdersSchema),
-  },
-  {
-    name: "bulk_add_to_cart",
-    description: "Add multiple products to cart at once. Useful for adding recipe ingredients or recurring items.",
-    inputSchema: zodToToolInput(BulkAddToCartSchema),
-  },
-];
-
-// Create MCP server instance
-const server = new Server(
-  {
-    name: "picnic-mcp-server",
-    version: "1.0.0",
-  },
-  {
-    capabilities: {
-      tools: {},
-    },
+  @registerTool({
+    name: 'get_user_profile',
+    description: 'Get the user profile information.',
+    inputSchema: object({}),
+  })
+  async getUserProfile() {
+    console.log('Tool: getUserProfile');
+    return this.picnic.getCurrentUser();
   }
-);
 
-// Handle list_tools request
-server.setRequestHandler(ListToolsRequestSchema, async () => {
-  return { tools };
-});
+  @registerTool({
+    name: 'get_cart',
+    description: 'Get the current shopping cart.',
+    inputSchema: object({}),
+  })
+  async getCart() {
+    console.log('Tool: get_cart');
+    return this.picnic.getCart();
+  }
 
-// Handle call_tool request
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
+  @registerTool({
+    name: 'add_to_cart',
+    description: 'Add a product to the cart. Returns the updated cart.',
+    inputSchema: object({
+      productId: string().describe('The ID of the product to add.'),
+      count: number().default(1).describe('The number of items to add.'),
+    }),
+  })
+  async addToCart({ productId, count }: { productId: string; count: number }) {
+    console.log('Tool: add_to_cart', { productId, count });
+    await this.picnic.addProductToCart(productId, count);
+    return this.picnic.getCart();
+  }
 
-  try {
-    // Ensure client is initialized
-    if (!picnicClient) {
-      await initializePicnicClient();
+  @registerTool({
+    name: 'remove_from_cart',
+    description: 'Remove a product from the cart. Returns the updated cart.',
+    inputSchema: object({
+      productId: string().describe('The ID of the product to remove.'),
+      count: number().default(1).describe('The number of items to remove.'),
+    }),
+  })
+  async removeFromCart({ productId, count }: { productId: string; count: number }) {
+    console.log('Tool: remove_from_cart', { productId, count });
+    await this.picnic.removeProductFromCart(productId, count);
+    return this.picnic.getCart();
+  }
+
+  @registerTool({
+    name: 'clear_cart',
+    description: 'Clear the entire shopping cart. Returns the updated cart.',
+    inputSchema: object({}),
+  })
+  async clearCart() {
+    console.log('Tool: clear_cart');
+    await this.picnic.clearCart();
+    return this.picnic.getCart();
+  }
+
+  @registerTool({
+    name: 'search_products',
+    description: 'Search for products in the Picnic catalog.',
+    inputSchema: object({
+      query: string().describe('The search query.'),
+    }),
+  })
+  async searchProducts({ query }: { query: string }) {
+    console.log('Tool: search_products', { query });
+    return this.picnic.search(query);
+  }
+
+  @registerTool({
+    name: 'get_product_details',
+    description: 'Get details for a specific product.',
+    inputSchema: object({
+      productId: string().describe('The ID of the product.'),
+    }),
+  })
+  async getProductDetails({ productId }: { productId: string }) {
+    console.log('Tool: get_product_details', { productId });
+    const products = await this.picnic.getProducts([productId]);
+    return products && products.length > 0 ? products[0] : null;
+  }
+
+  @registerTool({
+    name: 'get_suggestions',
+    description: 'Get personalized product suggestions.',
+    inputSchema: object({
+      limit: number().default(10).describe('The maximum number of suggestions to return.'),
+    }),
+  })
+  async getSuggestions({ limit }: { limit: number }) {
+    console.log('Tool: get_suggestions', { limit });
+    // This is a simplified implementation. A real one would be more complex.
+    const cart = await this.picnic.getCart();
+    const lastOrderId = cart?.items?.[0]?.order_id;
+    if (!lastOrderId) {
+      // Return generic popular items if no order history
+      const result = await this.picnic.search('bestsellers');
+      return result.items.slice(0, limit).map((item: any) => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        image_url: item.image_id ? this.picnic.getImageUrl(item.image_id) : undefined,
+        type: 'suggestion',
+      }));
     }
 
-    switch (name) {
-      case "search_products": {
-        const { query } = SearchProductsSchema.parse(args);
-        const results = await picnicClient.search(query);
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(results, null, 2),
-            },
-          ],
-        };
-      }
+    const order = await this.picnic.getOrder(lastOrderId);
+    const productIds = order.items.map((item: any) => item.product_id);
+    const products = await this.picnic.getProducts(productIds);
+    return products.slice(0, limit).map((p: Product) => ({ ...p, type: 'reorder' }));
+  }
 
-      case "get_cart": {
-        try {
-          // Try both method names - the API might use getCart() instead of getShoppingCart()
-          let cart;
-          if (typeof picnicClient.getCart === 'function') {
-            cart = await picnicClient.getCart();
-          } else if (typeof picnicClient.getShoppingCart === 'function') {
-            cart = await picnicClient.getShoppingCart();
-          } else {
-            throw new Error("Neither getCart() nor getShoppingCart() methods are available on picnicClient");
-          }
+  @registerTool({
+    name: 'get_delivery_slots',
+    description: 'Get available delivery slots.',
+    inputSchema: object({}),
+  })
+  async getDeliverySlots() {
+    console.log('Tool: get_delivery_slots');
+    return this.picnic.getDeliverySlots();
+  }
 
-          return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify(cart, null, 2),
-              },
-            ],
-          };
-        } catch (error) {
-          console.error("Error in get_cart:", error);
-          console.error("Available methods:", Object.getOwnPropertyNames(Object.getPrototypeOf(picnicClient)));
-          throw error;
-        }
-      }
+  @registerTool({
+    name: 'select_delivery_slot',
+    description: 'Select a delivery slot.',
+    inputSchema: object({
+      slotId: string().describe('The ID of the slot to select.'),
+    }),
+  })
+  async selectDeliverySlot({ slotId }: { slotId: string }) {
+    console.log('Tool: select_delivery_slot', { slotId });
+    return this.picnic.selectDeliverySlot(slotId);
+  }
 
-      case "add_to_cart": {
-        const { productId, count } = AddToCartSchema.parse(args);
-        await picnicClient.addProductToShoppingCart(productId, count);
-        const cart = await picnicClient.getShoppingCart();
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Added ${count}x product ${productId} to cart.\n\n${JSON.stringify(cart, null, 2)}`,
-            },
-          ],
-        };
-      }
+  @registerTool({
+    name: 'get_order_history',
+    description: 'Get past and upcoming orders.',
+    inputSchema: object({
+      filter: optional(string().enum(['CURRENT', 'COMPLETED'])).describe('Filter orders by status.'),
+      limit: optional(number()).describe('Max number of orders to return.'),
+      offset: optional(number()).describe('Offset for pagination.'),
+    }),
+  })
+  async get_order_history({
+    filter,
+    limit,
+    offset,
+  }: {
+    filter?: 'CURRENT' | 'COMPLETED';
+    limit?: number;
+    offset?: number;
+  }) {
+    console.log('Tool: get_order_history', { filter, limit, offset });
+    let deliveries = [...(await this.getPastDeliveries()), ...(await this.getUpcomingDeliveries())];
 
-      case "remove_from_cart": {
-        const { productId, count } = RemoveFromCartSchema.parse(args);
-        await picnicClient.removeProductFromShoppingCart(productId, count);
-        const cart = await picnicClient.getShoppingCart();
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Removed ${count}x product ${productId} from cart.\n\n${JSON.stringify(cart, null, 2)}`,
-            },
-          ],
-        };
-      }
+    if (filter) {
+      deliveries = deliveries.filter(d => d.status === filter);
+    }
+    
+    const total = deliveries.length;
+    
+    if (offset) {
+      deliveries = deliveries.slice(offset);
+    }
+    if (limit) {
+      deliveries = deliveries.slice(0, limit);
+    }
 
-      case "clear_cart": {
-        await picnicClient.clearShoppingCart();
-        return {
-          content: [
-            {
-              type: "text",
-              text: "Shopping cart cleared successfully",
-            },
-          ],
-        };
-      }
+    return { deliveries, total, has_more: (offset || 0) + (limit || 0) < total };
+  }
 
-      case "get_user": {
-        const user = await picnicClient.getUserDetails();
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(user, null, 2),
-            },
-          ],
-        };
-      }
+  @registerTool({
+    name: 'get_delivery_details',
+    description: 'Get details for a specific delivery.',
+    inputSchema: object({
+      deliveryId: string().describe('The ID of the delivery.'),
+    }),
+  })
+  async getDeliveryDetails({ deliveryId }: { deliveryId: string }) {
+    console.log('Tool: get_delivery_details', { deliveryId });
+    return this.picnic.getDelivery(deliveryId);
+  }
 
-      case "get_deliveries": {
-        const deliveries = await picnicClient.getDeliveries();
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(deliveries, null, 2),
-            },
-          ],
-        };
-      }
+  @registerTool({
+    name: 'checkout',
+    description: 'Checkout the current cart.',
+    inputSchema: object({}),
+  })
+  async checkout() {
+    console.log('Tool: checkout');
+    return this.picnic.checkout();
+  }
+  
+  @registerTool({
+    name: 'get_lists',
+    description: 'Retrieve all shopping lists.',
+    inputSchema: object({}),
+  })
+  async getLists() {
+    console.log('Tool: get_lists');
+    return this.picnic.getLists();
+  }
 
-      case "get_lists": {
-        const lists = await picnicClient.getLists();
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(lists, null, 2),
-            },
-          ],
-        };
-      }
+  @registerTool({
+    name: 'get_list_details',
+    description: 'Get the details and items of a specific shopping list.',
+    inputSchema: object({
+      listId: string().describe('The ID of the shopping list.'),
+    }),
+  })
+  async getListDetails({ listId }: { listId: string }) {
+    console.log('Tool: get_list_details', { listId });
+    return this.picnic.getList(listId);
+  }
 
-      case "get_categories": {
-        const categories = await picnicClient.getCategories();
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(categories, null, 2),
-            },
-          ],
-        };
-      }
+  @registerTool({
+    name: 'add_product_to_list',
+    description: 'Add a product to a specific shopping list.',
+    inputSchema: object({
+      listId: string().describe('The ID of the shopping list.'),
+      productId: string().describe('The ID of the product to add.'),
+    }),
+  })
+  async addProductToList({ listId, productId }: { listId: string; productId: string }) {
+    console.log('Tool: add_product_to_list', { listId, productId });
+    const list = await this.picnic.getList(listId);
+    const productIds = list.items.map((i: any) => i.id);
+    if (!productIds.includes(productId)) {
+      productIds.push(productId);
+      return this.picnic.updateList(listId, { items: productIds.map(id => ({ id, type: 'PRODUCT' })) });
+    }
+    return list;
+  }
+  
+  @registerTool({
+    name: 'remove_product_from_list',
+    description: 'Remove a product from a specific shopping list.',
+    inputSchema: object({
+      listId: string().describe('The ID of the shopping list.'),
+      productId: string().describe('The ID of the product to remove.'),
+    }),
+  })
+  async removeProductFromList({ listId, productId }: { listId: string; productId: string }) {
+    console.log('Tool: remove_product_from_list', { listId, productId });
+    const list = await this.picnic.getList(listId);
+    const productIds = list.items.map((i: any) => i.id).filter((id: string) => id !== productId);
+    return this.picnic.updateList(listId, { items: productIds.map(id => ({ id, type: 'PRODUCT' })) });
+  }
 
-      case "get_order_history": {
-        const { filter, limit } = GetOrderHistorySchema.parse(args);
-        // Get all deliveries without filter (Picnic API may not support filter in POST body)
-        // Then filter client-side based on status
-        const allDeliveries = await picnicClient.getDeliveries();
-        let deliveries = allDeliveries || [];
+  @registerTool({
+    name: 'search_orders',
+    description: 'Search for products within past and upcoming orders.',
+    inputSchema: object({
+      query: string().describe('The product name to search for.'),
+      scope: string().enum(['all', 'upcoming', 'history']).default('all').describe('Whether to search in all, upcoming, or past orders.'),
+    }),
+  })
+  async searchOrders({ query, scope }: { query: string; scope: 'all' | 'upcoming' | 'history' }) {
+    console.log('Tool: search_orders', { query, scope });
+    
+    let orders: any[] = [];
+    if (scope === 'upcoming' || scope === 'all') {
+      orders = orders.concat(await this.getUpcomingDeliveries());
+    }
+    if (scope === 'history' || scope === 'all') {
+      orders = orders.concat(await this.getPastDeliveries());
+    }
 
-        // Apply client-side filtering if not ALL
-        if (filter !== 'ALL') {
-          deliveries = deliveries.filter((d: any) => d.status === filter);
-        }
+    const lowerCaseQuery = query.toLowerCase();
+    const matches: any[] = [];
 
-        const limitedDeliveries = deliveries.slice(0, limit);
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                total: deliveries.length,
-                returned: limitedDeliveries.length,
-                filter,
-                orders: limitedDeliveries
-              }, null, 2),
-            },
-          ],
-        };
-      }
-
-      case "search_orders": {
-        const { query, scope } = SearchOrdersSchema.parse(args);
-        const searchLower = query.toLowerCase();
-
-        // Get all deliveries and filter client-side
-        const allDeliveries = await picnicClient.getDeliveries();
-        let orders: any[] = allDeliveries || [];
-
-        // Apply scope filter
-        if (scope === 'upcoming') {
-          orders = orders.filter((d: any) => d.status === 'CURRENT');
-        } else if (scope === 'history') {
-          orders = orders.filter((d: any) => d.status === 'COMPLETED');
-        }
-        // scope === 'all' keeps all orders
-
-        // Search within orders for matching products
-        const matches: any[] = [];
-        for (const order of orders) {
-          const orderItems = order.items || order.orders?.[0]?.items || [];
-          for (const item of orderItems) {
-            const name = item.name || item.product_name || '';
-            if (name.toLowerCase().includes(searchLower)) {
-              matches.push({
-                order_id: order.id,
-                delivery_date: order.delivery_time || order.slot?.window_start,
-                status: order.status,
-                product: {
-                  id: item.id || item.product_id,
-                  name: name,
-                  quantity: item.quantity || item.count || 1,
-                  price: item.price
+    for (const order of orders) {
+      const deliveryDetails = await this.picnic.getDelivery(order.id);
+      if (deliveryDetails && deliveryDetails.orders) {
+        for (const subOrder of deliveryDetails.orders) {
+          if (subOrder.items) {
+            for (const item of subOrder.items) {
+              const baseItem = item.items && item.items[0] ? item.items[0] : item;
+              if (baseItem.name && baseItem.name.toLowerCase().includes(lowerCaseQuery)) {
+                let quantity = 1;
+                if (baseItem.decorators) {
+                  for (const decorator of baseItem.decorators) {
+                    if (decorator.type === 'QUANTITY') {
+                      quantity = decorator.quantity;
+                      break;
+                    }
+                  }
                 }
-              });
+                
+                matches.push({
+                  orderId: order.id,
+                  deliveryDate: order.delivery_time.start,
+                  deliveryStatus: order.status,
+                  productName: baseItem.name,
+                  productId: baseItem.id,
+                  quantity: quantity,
+                  price: baseItem.price,
+                });
+              }
             }
           }
         }
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                query,
-                scope,
-                total_matches: matches.length,
-                matches
-              }, null, 2),
-            },
-          ],
-        };
       }
-
-      case "bulk_add_to_cart": {
-        const { items } = BulkAddToCartSchema.parse(args);
-        const results: any[] = [];
-
-        for (const item of items) {
-          try {
-            await picnicClient.addProductToShoppingCart(item.productId, item.count);
-            results.push({ productId: item.productId, count: item.count, success: true });
-          } catch (error) {
-            results.push({
-              productId: item.productId,
-              count: item.count,
-              success: false,
-              error: error instanceof Error ? error.message : String(error)
-            });
-          }
-        }
-
-        const cart = await picnicClient.getShoppingCart();
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                added: results.filter(r => r.success).length,
-                failed: results.filter(r => !r.success).length,
-                results,
-                cart
-              }, null, 2),
-            },
-          ],
-        };
-      }
-
-      default:
-        throw new Error(`Unknown tool: ${name}`);
     }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
+
     return {
-      content: [
-        {
-          type: "text",
-          text: `Error: ${errorMessage}`,
-        },
-      ],
-      isError: true,
+      query,
+      scope,
+      matches,
     };
   }
-});
 
-// Start server based on configuration
-async function main() {
-  try {
-    // Initialize Picnic client
-    await initializePicnicClient();
+  // --- Helper Methods ---
 
-    if (config.enableHttpServer) {
-      // HTTP Server mode (for Home Assistant addon)
-      const httpServer = createServer(async (req, res) => {
-        res.setHeader("Content-Type", "application/json");
-        res.setHeader("Access-Control-Allow-Origin", "*");
-        res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-        res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  private async getPastDeliveries() {
+    const cacheKey = 'deliveries:past';
+    const cached = this.cache.get(cacheKey);
+    if (cached) return cached;
+    const result = await this.picnic.getDeliveries('COMPLETED');
+    this.cache.set(cacheKey, result, 600); // Cache for 10 minutes
+    return result;
+  }
 
-        if (req.method === "OPTIONS") {
-          res.writeHead(200);
-          res.end();
-          return;
-        }
-
-        if (req.method === "GET" && req.url === "/health") {
-          res.writeHead(200);
-          res.end(JSON.stringify({ status: "ok", version: "1.1.0" }));
-          return;
-        }
-
-        if (req.method === "GET" && req.url === "/tools") {
-          res.writeHead(200);
-          res.end(JSON.stringify({ tools }));
-          return;
-        }
-
-        if (req.method === "POST" && req.url === "/call-tool") {
-          let body = "";
-          req.on("data", (chunk) => {
-            body += chunk.toString();
-          });
-
-          req.on("end", async () => {
-            try {
-              const { name, arguments: args } = JSON.parse(body);
-              console.log(`Calling tool: ${name} with args:`, args);
-
-              // Ensure client is initialized
-              if (!picnicClient) {
-                await initializePicnicClient();
-              }
-
-              // Call the tool directly (bypassing MCP Server.request which requires connection)
-              let response;
-
-              switch (name) {
-                case "search_products": {
-                  const { query } = SearchProductsSchema.parse(args);
-                  const results = await picnicClient.search(query);
-                  console.log("DEBUG: Search results sample (first 2 items):");
-                  console.log(JSON.stringify(results?.slice(0, 2), null, 2));
-                  response = {
-                    content: [{ type: "text", text: JSON.stringify(results, null, 2) }],
-                  };
-                  break;
-                }
-
-                case "get_cart": {
-                  let cart;
-                  if (typeof picnicClient.getCart === 'function') {
-                    cart = await picnicClient.getCart();
-                  } else if (typeof picnicClient.getShoppingCart === 'function') {
-                    cart = await picnicClient.getShoppingCart();
-                  } else {
-                    throw new Error("Neither getCart() nor getShoppingCart() methods available");
-                  }
-                  console.log("DEBUG: Full cart structure:");
-                  console.log(JSON.stringify(cart, null, 2));
-                  if (cart?.items && cart.items.length > 0) {
-                    console.log("DEBUG: First cart item fields:");
-                    console.log("Keys:", Object.keys(cart.items[0]));
-                    console.log("First item:", JSON.stringify(cart.items[0], null, 2));
-                  }
-                  response = {
-                    content: [{ type: "text", text: JSON.stringify(cart, null, 2) }],
-                  };
-                  break;
-                }
-
-                case "add_to_cart": {
-                  const { productId, count } = AddToCartSchema.parse(args);
-                  await picnicClient.addProductToShoppingCart(productId, count);
-                  const cart = await picnicClient.getShoppingCart();
-                  response = {
-                    content: [{ type: "text", text: `Added ${count}x product ${productId}\n\n${JSON.stringify(cart, null, 2)}` }],
-                  };
-                  break;
-                }
-
-                case "remove_from_cart": {
-                  const { productId, count } = RemoveFromCartSchema.parse(args);
-                  await picnicClient.removeProductFromShoppingCart(productId, count);
-                  const cart = await picnicClient.getShoppingCart();
-                  response = {
-                    content: [{ type: "text", text: `Removed ${count}x product ${productId}\n\n${JSON.stringify(cart, null, 2)}` }],
-                  };
-                  break;
-                }
-
-                case "clear_cart": {
-                  await picnicClient.clearShoppingCart();
-                  response = {
-                    content: [{ type: "text", text: "Shopping cart cleared successfully" }],
-                  };
-                  break;
-                }
-
-                case "get_user": {
-                  const user = await picnicClient.getUserDetails();
-                  response = {
-                    content: [{ type: "text", text: JSON.stringify(user, null, 2) }],
-                  };
-                  break;
-                }
-
-                case "get_deliveries": {
-                  const deliveries = await picnicClient.getDeliveries();
-                  response = {
-                    content: [{ type: "text", text: JSON.stringify(deliveries, null, 2) }],
-                  };
-                  break;
-                }
-
-                case "get_lists": {
-                  const lists = await picnicClient.getLists();
-                  response = {
-                    content: [{ type: "text", text: JSON.stringify(lists, null, 2) }],
-                  };
-                  break;
-                }
-
-                case "get_categories": {
-                  const categories = await picnicClient.getCategories();
-                  response = {
-                    content: [{ type: "text", text: JSON.stringify(categories, null, 2) }],
-                  };
-                  break;
-                }
-
-                case "get_order_history": {
-                  const { filter, limit } = GetOrderHistorySchema.parse(args);
-                  // Get all deliveries without filter, then filter client-side
-                  const allDeliveries = await picnicClient.getDeliveries();
-                  let deliveries = allDeliveries || [];
-
-                  // Apply client-side filtering if not ALL
-                  if (filter !== 'ALL') {
-                    deliveries = deliveries.filter((d: any) => d.status === filter);
-                  }
-
-                  const limitedDeliveries = deliveries.slice(0, limit);
-                  response = {
-                    content: [{
-                      type: "text",
-                      text: JSON.stringify({
-                        total: deliveries.length,
-                        returned: limitedDeliveries.length,
-                        filter,
-                        orders: limitedDeliveries
-                      }, null, 2)
-                    }],
-                  };
-                  break;
-                }
-
-                case "search_orders": {
-                  const { query, scope } = SearchOrdersSchema.parse(args);
-                  const searchLower = query.toLowerCase();
-
-                  // Get all deliveries and filter client-side
-                  const allDeliveries = await picnicClient.getDeliveries();
-                  let orders: any[] = allDeliveries || [];
-
-                  // Apply scope filter
-                  if (scope === 'upcoming') {
-                    orders = orders.filter((d: any) => d.status === 'CURRENT');
-                  } else if (scope === 'history') {
-                    orders = orders.filter((d: any) => d.status === 'COMPLETED');
-                  }
-                  // scope === 'all' keeps all orders
-
-                  const matches: any[] = [];
-                  for (const order of orders) {
-                    const orderItems = order.items || order.orders?.[0]?.items || [];
-                    for (const item of orderItems) {
-                      const name = item.name || item.product_name || '';
-                      if (name.toLowerCase().includes(searchLower)) {
-                        matches.push({
-                          order_id: order.id,
-                          delivery_date: order.delivery_time || order.slot?.window_start,
-                          status: order.status,
-                          product: {
-                            id: item.id || item.product_id,
-                            name: name,
-                            quantity: item.quantity || item.count || 1,
-                            price: item.price
-                          }
-                        });
-                      }
-                    }
-                  }
-
-                  response = {
-                    content: [{
-                      type: "text",
-                      text: JSON.stringify({
-                        query,
-                        scope,
-                        total_matches: matches.length,
-                        matches
-                      }, null, 2)
-                    }],
-                  };
-                  break;
-                }
-
-                case "bulk_add_to_cart": {
-                  const { items } = BulkAddToCartSchema.parse(args);
-                  const results: any[] = [];
-
-                  for (const item of items) {
-                    try {
-                      await picnicClient.addProductToShoppingCart(item.productId, item.count);
-                      results.push({ productId: item.productId, count: item.count, success: true });
-                    } catch (error) {
-                      results.push({
-                        productId: item.productId,
-                        count: item.count,
-                        success: false,
-                        error: error instanceof Error ? error.message : String(error)
-                      });
-                    }
-                  }
-
-                  const cart = await picnicClient.getShoppingCart();
-                  response = {
-                    content: [{
-                      type: "text",
-                      text: JSON.stringify({
-                        added: results.filter(r => r.success).length,
-                        failed: results.filter(r => !r.success).length,
-                        results,
-                        cart
-                      }, null, 2)
-                    }],
-                  };
-                  break;
-                }
-
-                default:
-                  throw new Error(`Unknown tool: ${name}`);
-              }
-
-              console.log(`Tool ${name} completed successfully`);
-              res.writeHead(200);
-              res.end(JSON.stringify(response));
-            } catch (error) {
-              console.error("ERROR in /call-tool endpoint:");
-              console.error("Error details:", error);
-              console.error("Stack trace:", error instanceof Error ? error.stack : "No stack trace");
-              console.error("Request body:", body);
-
-              const errorMessage = error instanceof Error ? error.message : String(error);
-              res.writeHead(500);
-              res.end(JSON.stringify({ error: errorMessage }));
-            }
-          });
-          return;
-        }
-
-        res.writeHead(404);
-        res.end(JSON.stringify({ error: "Not found" }));
-      });
-
-      httpServer.listen(config.httpPort, config.httpHost, () => {
-        console.log(`HTTP Server listening on http://${config.httpHost}:${config.httpPort}`);
-        console.log(`Health check: http://${config.httpHost}:${config.httpPort}/health`);
-      });
-    } else {
-      // Stdio mode (for MCP clients like Claude Desktop)
-      const transport = new StdioServerTransport();
-      await server.connect(transport);
-      console.log("Picnic MCP Server running on stdio");
-    }
-  } catch (error) {
-    console.error("Failed to start server:", error);
-    process.exit(1);
+  private async getUpcomingDeliveries() {
+    const cacheKey = 'deliveries:upcoming';
+    const cached = this.cache.get(cacheKey);
+    if (cached) return cached;
+    const result = await this.picnic.getDeliveries('CURRENT');
+    this.cache.set(cacheKey, result, 60); // Cache for 1 minute
+    return result;
   }
 }
 
-main();
+// --- Server Initialization ---
+
+const mcp = new PicnicMCP({
+  port: 3000,
+  configPath: '/data/options.json',
+});
+
+mcp.start();
