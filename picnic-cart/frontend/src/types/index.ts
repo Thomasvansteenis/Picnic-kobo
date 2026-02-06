@@ -91,6 +91,7 @@ export interface ParsedIngredient {
   quantity?: number
   unit?: string
   ingredient: string
+  name?: string  // Alias for ingredient (used by backend)
   normalized: string
   search_term: string
 }
