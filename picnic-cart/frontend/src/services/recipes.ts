@@ -15,6 +15,10 @@ interface ParseTextResponse {
 interface MatchProductsResponse {
   matches: ProductMatch[]
   not_found: ParsedIngredient[]
+  needs_review_count?: number
+  high_confidence_count?: number
+  total_ingredients?: number
+  matched_count?: number
 }
 
 interface AddToCartResponse {

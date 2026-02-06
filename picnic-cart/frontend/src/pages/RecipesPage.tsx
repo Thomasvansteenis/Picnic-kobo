@@ -28,12 +28,6 @@ function getConfidenceBg(confidence: number): string {
   return 'bg-red-50 border-red-200'
 }
 
-function getConfidenceLabel(confidence: number): string {
-  if (confidence >= CONFIDENCE_HIGH) return 'Zeker'
-  if (confidence >= CONFIDENCE_MEDIUM) return 'Controleer'
-  return 'Onzeker'
-}
-
 function formatPrice(cents?: number): string {
   if (!cents) return ''
   return `€${(cents / 100).toFixed(2)}`
@@ -339,7 +333,7 @@ export function RecipesPage() {
                         {/* Ingredient and product info */}
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-gray-900 truncate">
-                            {match.ingredient.original_text || match.ingredient.name}
+                            {match.ingredient.original_text || match.ingredient.ingredient}
                           </p>
                           {match.selected ? (
                             <div className="flex items-center gap-2">
@@ -423,7 +417,7 @@ export function RecipesPage() {
                             <p className="text-xs font-medium text-gray-500 px-2 py-1">
                               Kies een product:
                             </p>
-                            {match.matches.map((product, pIndex) => (
+                            {match.matches.map((product) => (
                               <button
                                 key={product.id}
                                 onClick={() => selectProduct(index, product)}
